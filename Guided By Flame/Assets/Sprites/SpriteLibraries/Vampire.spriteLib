@@ -1,0 +1,130 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &1
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5e6fedc2472449cead18ef23b5cb30d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Library:
+  - m_Name: Idle
+    m_Hash: 1008081451
+    m_CategoryList: []
+    m_OverrideEntries:
+    - m_Name: vampierIdle_0
+      m_Hash: 945060183
+      m_Sprite: {fileID: -5933487331349910075, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -5933487331349910075, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+    - m_Name: vampierIdle_1
+      m_Hash: 257116609
+      m_Sprite: {fileID: 1575231254521515711, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 1575231254521515711, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+    - m_Name: vampierIdle_2
+      m_Hash: 375003259
+      m_Sprite: {fileID: -7474392091782733268, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -7474392091782733268, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+    - m_Name: vampierIdle_3
+      m_Hash: 559753453
+      m_Sprite: {fileID: -3395254893946689628, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -3395254893946689628, guid: bc8e20fc22909784c9a0f6ff8e026382, type: 3}
+    m_FromMain: 0
+    m_EntryOverrideCount: 4
+  - m_Name: Walk
+    m_Hash: 765711723
+    m_CategoryList: []
+    m_OverrideEntries:
+    - m_Name: VampireWalk_0
+      m_Hash: 613378369
+      m_Sprite: {fileID: 3327631372905941351, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 3327631372905941351, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_1
+      m_Hash: 327702999
+      m_Sprite: {fileID: -2251429435855062085, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -2251429435855062085, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_2
+      m_Hash: 176228461
+      m_Sprite: {fileID: -6247143379490146696, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -6247143379490146696, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_3
+      m_Hash: 1032206587
+      m_Sprite: {fileID: 8140079066553327927, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 8140079066553327927, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_4
+      m_Hash: 602058072
+      m_Sprite: {fileID: -7005086374076140082, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -7005086374076140082, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_5
+      m_Hash: 350592462
+      m_Sprite: {fileID: -8768197762170853694, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -8768197762170853694, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_6
+      m_Hash: 233622644
+      m_Sprite: {fileID: -32698321750902128, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -32698321750902128, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_7
+      m_Hash: 988544226
+      m_Sprite: {fileID: 9032799287254399581, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 9032799287254399581, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_8
+      m_Hash: 710205811
+      m_Sprite: {fileID: -6634647979071721904, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -6634647979071721904, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_9
+      m_Hash: 492032485
+      m_Sprite: {fileID: 1097355050405936742, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 1097355050405936742, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_10
+      m_Hash: 742330383
+      m_Sprite: {fileID: 1360522511941809693, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 1360522511941809693, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_11
+      m_Hash: 456663193
+      m_Sprite: {fileID: 238475733014228657, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 238475733014228657, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_12
+      m_Hash: 36794659
+      m_Sprite: {fileID: -7903001860616171742, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -7903001860616171742, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_13
+      m_Hash: 892748213
+      m_Sprite: {fileID: -5034444510953878232, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -5034444510953878232, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_14
+      m_Hash: 726848534
+      m_Sprite: {fileID: 5400037577155755211, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 5400037577155755211, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    - m_Name: VampireWalk_15
+      m_Hash: 475391104
+      m_Sprite: {fileID: -3583255410324077036, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -3583255410324077036, guid: 133da8b7aba0b7843aeea65737e82429, type: 3}
+    m_FromMain: 0
+    m_EntryOverrideCount: 16
+  m_PrimaryLibraryGUID: 
+  m_ModificationHash: 638826778297013465
+  m_Version: 1
