@@ -5,14 +5,18 @@ using System.Collections;
 public class playerMovement : MonoBehaviour
 {
     [SerializeField] private float moveSpeed = 5f;
-    [SerializeField] private AudioClip[] footstepClips; // Dodaj tablicę dźwięków
-    [SerializeField] private float stepInterval = 0.5f;  // Czas między krokami
+    [SerializeField] private float sprintSpeed = 8f; // Sprint prędkość
+
+    [SerializeField] private AudioClip[] footstepClips;
+    [SerializeField] private float stepInterval = 0.5f;
 
     private Rigidbody2D rb;
     private Vector2 moveInput;
     private Animator animator;
     private AudioSource audioSource;
     private Coroutine footstepCoroutine;
+
+    private bool isSprinting = false;
 
     void Start()
     {
@@ -23,7 +27,8 @@ public class playerMovement : MonoBehaviour
 
     void Update()
     {
-        rb.linearVelocity = moveInput * moveSpeed;
+        float currentSpeed = isSprinting ? sprintSpeed : moveSpeed;
+        rb.linearVelocity = moveInput * currentSpeed;
 
         if (moveInput != Vector2.zero)
         {
@@ -57,6 +62,18 @@ public class playerMovement : MonoBehaviour
         else
         {
             animator.SetBool("isWalking", true);
+        }
+    }
+
+    public void Sprint(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            isSprinting = true;
+        }
+        else if (context.canceled)
+        {
+            isSprinting = false;
         }
     }
 
