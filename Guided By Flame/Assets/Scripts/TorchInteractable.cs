@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
+using System.Collections;
 
 [RequireComponent(typeof(Light2D))]
 [RequireComponent(typeof(AudioSource))]
+[RequireComponent(typeof(SpriteRenderer))]
 public class TorchInteractable : MonoBehaviour
 {
     public KeyCode interactKey = KeyCode.E;
@@ -11,18 +13,26 @@ public class TorchInteractable : MonoBehaviour
     [SerializeField] private AudioClip torchOnClip;
     [SerializeField] private AudioClip torchOffClip;
 
+    [SerializeField] private Sprite torchOffSprite;
+    [SerializeField] private Sprite torchOnSprite;
+
     private Light2D torchLight;
     private bool isLit = false;
     private Transform player;
     private AudioSource audioSource;
+    private SpriteRenderer spriteRenderer;
+    private Coroutine autoExtinguishCoroutine;
 
     void Start()
     {
         torchLight = GetComponent<Light2D>();
-        torchLight.enabled = false; // wyłącz światło domyślnie
+        torchLight.enabled = false;
 
         audioSource = GetComponent<AudioSource>();
         audioSource.playOnAwake = false;
+
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        spriteRenderer.sprite = torchOffSprite; // domyślnie zgaszona
 
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
     }
@@ -43,15 +53,44 @@ public class TorchInteractable : MonoBehaviour
         isLit = !isLit;
         torchLight.enabled = isLit;
 
-        if (isLit && torchOnClip != null)
+        // Zmieniamy sprite w zależności od stanu
+        spriteRenderer.sprite = isLit ? torchOnSprite : torchOffSprite;
+
+        if (isLit)
         {
-            audioSource.clip = torchOnClip;
-            audioSource.Play();
+            if (torchOnClip != null)
+            {
+                audioSource.clip = torchOnClip;
+                audioSource.Play();
+            }
+
+            if (autoExtinguishCoroutine != null)
+                StopCoroutine(autoExtinguishCoroutine);
+
+            autoExtinguishCoroutine = StartCoroutine(AutoExtinguishTorch());
         }
-        else if (!isLit && torchOffClip != null)
+        else
         {
-            audioSource.clip = torchOffClip;
-            audioSource.Play();
+            if (torchOffClip != null)
+            {
+                audioSource.clip = torchOffClip;
+                audioSource.Play();
+            }
+
+            if (autoExtinguishCoroutine != null)
+            {
+                StopCoroutine(autoExtinguishCoroutine);
+                autoExtinguishCoroutine = null;
+            }
+        }
+    }
+
+    private IEnumerator AutoExtinguishTorch()
+    {
+        yield return new WaitForSeconds(60f);
+        if (isLit)
+        {
+            ToggleTorch();
         }
     }
 }
