@@ -147,7 +147,8 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      GuidedByFlame_MainMenuPic_0: 7320957889880281971
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

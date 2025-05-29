@@ -1,0 +1,102 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|d:\\sobek\\guidedbyflame\\guided by flame\\assets\\scripts\\deathscreenmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\deathscreenmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|d:\\sobek\\guidedbyflame\\guided by flame\\assets\\scripts\\pulsatetext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\pulsatetext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\deathscreenui.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\deathscreenui.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\playerhealth.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\playerhealth.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\enemyai_second.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\enemyai_second.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "DeathScreenManager.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenManager.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\DeathScreenManager.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenManager.cs",
+              "RelativeToolTip": "Assets\\Scripts\\DeathScreenManager.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA0AAAAFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-27T21:57:30.238Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "PulsateText.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PulsateText.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\PulsateText.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PulsateText.cs",
+              "RelativeToolTip": "Assets\\Scripts\\PulsateText.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA8AAAAFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-27T21:22:36.212Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "DeathScreenUI.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenUI.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\DeathScreenUI.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenUI.cs",
+              "RelativeToolTip": "Assets\\Scripts\\DeathScreenUI.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABAAAAAhAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-27T21:10:50.405Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "PlayerHealth.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHealth.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\PlayerHealth.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHealth.cs",
+              "RelativeToolTip": "Assets\\Scripts\\PlayerHealth.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA4AAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-27T20:51:17.141Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "EnemyAI_Second.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\EnemyAI_Second.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\EnemyAI_Second.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\EnemyAI_Second.cs",
+              "RelativeToolTip": "Assets\\Scripts\\EnemyAI_Second.cs",
+              "ViewState": "AgIAAGIAAAAAAAAAAAAowH0AAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-27T20:28:37.45Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
