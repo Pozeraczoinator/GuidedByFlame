@@ -87,7 +87,7 @@ public class TorchInteractable : MonoBehaviour
 
     private IEnumerator AutoExtinguishTorch()
     {
-        yield return new WaitForSeconds(60f);
+        yield return new WaitForSeconds(20f);
         if (isLit)
         {
             ToggleTorch();

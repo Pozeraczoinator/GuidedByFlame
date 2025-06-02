@@ -36,11 +36,8 @@ public class EnemyAI_Second : MonoBehaviour
 
     [SerializeField] private float chaseMaxRange = 2f;
 
-<<<<<<< Updated upstream
-    // Eventy o zmianie stanu poœcigu
-=======
+
     // Eventy o zmianie stanu poÅ›cigu
->>>>>>> Stashed changes
     public delegate void ChaseStatusChanged(bool isChasing);
     public event ChaseStatusChanged OnChaseStatusChanged;
 
@@ -67,25 +64,19 @@ public class EnemyAI_Second : MonoBehaviour
 
         float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
 
-<<<<<<< Updated upstream
-        bool wasChasing = isChasingPlayer; // zapamiêtaj poprzedni stan
 
-        // Jeœli gracz widoczny i w zasiêgu — rozpocznij poœcig
-=======
         bool wasChasing = isChasingPlayer; // zapamiÄ™taj poprzedni stan
 
         // JeÅ›li gracz widoczny i w zasiÄ™gu â€” rozpocznij poÅ›cig
->>>>>>> Stashed changes
+
         if (isPlayerVisible && distanceToPlayer <= detectionRange)
         {
             isChasingPlayer = true;
         }
 
-<<<<<<< Updated upstream
-        // Zabij gracza jeœli jest bardzo blisko
-=======
+
         // Zabij gracza jeÅ›li jest bardzo blisko
->>>>>>> Stashed changes
+
         if (isPlayerVisible && distanceToPlayer <= chaseStopDistance)
         {
             KillPlayer();
@@ -95,21 +86,16 @@ public class EnemyAI_Second : MonoBehaviour
         {
             if (isPlayerVisible && distanceToPlayer <= chaseMaxRange)
             {
-<<<<<<< Updated upstream
-                agent.SetDestination(playerTransform.position); // tylko jeœli widoczny i w zasiêgu
-=======
+
                 agent.SetDestination(playerTransform.position); // tylko jeÅ›li widoczny i w zasiÄ™gu
->>>>>>> Stashed changes
+
             }
             else
             {
                 Debug.Log("Ile " + distanceToPlayer);
                 isChasingPlayer = false;
-<<<<<<< Updated upstream
-                GoToNextPatrolPoint(); //  wróæ do patrolowania
-=======
+
                 GoToNextPatrolPoint(); //  wrÃ³Ä‡ do patrolowania
->>>>>>> Stashed changes
             }
         }
         else
@@ -121,11 +107,9 @@ public class EnemyAI_Second : MonoBehaviour
             }
         }
 
-<<<<<<< Updated upstream
-        // Jeœli stan poœcigu siê zmieni³, wywo³aj event
-=======
+
         // JeÅ›li stan poÅ›cigu siÄ™ zmieniÅ‚, wywoÅ‚aj event
->>>>>>> Stashed changes
+
         if (wasChasing != isChasingPlayer)
         {
             OnChaseStatusChanged?.Invoke(isChasingPlayer);
@@ -151,10 +135,9 @@ public class EnemyAI_Second : MonoBehaviour
     {
         currentTargetIndex = (currentTargetIndex + 1) % targets.Length;
         agent.SetDestination(targets[currentTargetIndex].position);
-<<<<<<< Updated upstream
-=======
+
         Debug.Log("dupa" + currentTargetIndex);
->>>>>>> Stashed changes
+
     }
 
 

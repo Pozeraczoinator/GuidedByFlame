@@ -222,7 +222,11 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      vampierIdle_0: -5933487331349910075
+      vampierIdle_1: 1575231254521515711
+      vampierIdle_2: -7474392091782733268
+      vampierIdle_3: -3395254893946689628
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
