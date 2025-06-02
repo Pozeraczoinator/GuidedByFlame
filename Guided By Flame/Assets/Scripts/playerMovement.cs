@@ -5,7 +5,7 @@ using System.Collections;
 public class playerMovement : MonoBehaviour
 {
     [SerializeField] private float moveSpeed = 5f;
-    [SerializeField] private float sprintSpeed = 8f; // Sprint prędkość
+    [SerializeField] private float sprintSpeed = 8f;
 
     [SerializeField] private AudioClip[] footstepClips;
     [SerializeField] private float stepInterval = 0.5f;
@@ -17,6 +17,7 @@ public class playerMovement : MonoBehaviour
     private Coroutine footstepCoroutine;
 
     private bool isSprinting = false;
+    private bool canMove = true; // <<--- NOWE
 
     void Start()
     {
@@ -27,6 +28,21 @@ public class playerMovement : MonoBehaviour
 
     void Update()
     {
+        if (!canMove)
+        {
+            rb.linearVelocity = Vector2.zero;
+
+            if (footstepCoroutine != null)
+            {
+                StopCoroutine(footstepCoroutine);
+                footstepCoroutine = null;
+                audioSource.Stop();
+            }
+
+            animator.SetBool("isWalking", false);
+            return;
+        }
+
         float currentSpeed = isSprinting ? sprintSpeed : moveSpeed;
         rb.linearVelocity = moveInput * currentSpeed;
 
@@ -48,6 +64,12 @@ public class playerMovement : MonoBehaviour
 
     public void Move(InputAction.CallbackContext context)
     {
+        if (!canMove)
+        {
+            moveInput = Vector2.zero;
+            return;
+        }
+
         moveInput = context.ReadValue<Vector2>();
 
         animator.SetFloat("InputX", moveInput.x);
@@ -67,6 +89,8 @@ public class playerMovement : MonoBehaviour
 
     public void Sprint(InputAction.CallbackContext context)
     {
+        if (!canMove) return;
+
         if (context.performed)
         {
             isSprinting = true;
@@ -74,6 +98,17 @@ public class playerMovement : MonoBehaviour
         else if (context.canceled)
         {
             isSprinting = false;
+        }
+    }
+
+    public void SetCanMove(bool value)
+    {
+        canMove = value;
+
+        if (!canMove)
+        {
+            moveInput = Vector2.zero;
+            rb.linearVelocity = Vector2.zero;
         }
     }
 
@@ -92,3 +127,4 @@ public class playerMovement : MonoBehaviour
         }
     }
 }
+

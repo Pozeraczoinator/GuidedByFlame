@@ -34,6 +34,15 @@ public class EnemyAI_Second : MonoBehaviour
     [SerializeField] private float detectionRange = 5f;
     [SerializeField] private float chaseStopDistance = 1.5f;
 
+    [SerializeField] private float chaseMaxRange = 2f;
+
+    // Eventy o zmianie stanu poœcigu
+    public delegate void ChaseStatusChanged(bool isChasing);
+    public event ChaseStatusChanged OnChaseStatusChanged;
+
+    private bool isChasingPlayer = false;
+
+
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
@@ -54,21 +63,48 @@ public class EnemyAI_Second : MonoBehaviour
 
         float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
 
-        if (distanceToPlayer <= chaseStopDistance)
+        bool wasChasing = isChasingPlayer; // zapamiêtaj poprzedni stan
+
+        // Jeœli gracz widoczny i w zasiêgu — rozpocznij poœcig
+        if (isPlayerVisible && distanceToPlayer <= detectionRange)
         {
-            KillPlayer(); // zabiæ gracza
+            isChasingPlayer = true;
         }
-        else if (distanceToPlayer <= detectionRange)
+
+        // Zabij gracza jeœli jest bardzo blisko
+        if (isPlayerVisible && distanceToPlayer <= chaseStopDistance)
         {
-            // œcigaj gracza
-            agent.SetDestination(playerTransform.position);
+            KillPlayer();
+            isChasingPlayer = false;
         }
-        else if (!agent.pathPending && agent.remainingDistance <= stoppingDistance)
+        else if (isChasingPlayer)
         {
-            // patroluj
-            currentTargetIndex = (currentTargetIndex + 1) % targets.Length;
-            agent.SetDestination(targets[currentTargetIndex].position);
+            if (isPlayerVisible && distanceToPlayer <= chaseMaxRange)
+            {
+                agent.SetDestination(playerTransform.position); // tylko jeœli widoczny i w zasiêgu
+            }
+            else
+            {
+                Debug.Log("Ile " + distanceToPlayer);
+                isChasingPlayer = false;
+                GoToNextPatrolPoint(); //  wróæ do patrolowania
+            }
         }
+        else
+        {
+            // Normalny patrol
+            if (!agent.pathPending && agent.remainingDistance <= stoppingDistance)
+            {
+                GoToNextPatrolPoint();
+            }
+        }
+
+        // Jeœli stan poœcigu siê zmieni³, wywo³aj event
+        if (wasChasing != isChasingPlayer)
+        {
+            OnChaseStatusChanged?.Invoke(isChasingPlayer);
+        }
+
 
         // animacja
         Vector3 velocity = agent.velocity;
@@ -84,6 +120,14 @@ public class EnemyAI_Second : MonoBehaviour
 
         AnimateWalk();
     }
+
+    private void GoToNextPatrolPoint()
+    {
+        currentTargetIndex = (currentTargetIndex + 1) % targets.Length;
+        agent.SetDestination(targets[currentTargetIndex].position);
+    }
+
+
 
 
 
@@ -120,6 +164,16 @@ public class EnemyAI_Second : MonoBehaviour
     {
         playerTransform.GetComponent<PlayerHealth>()?.Die();
     }
+
+
+
+    private bool isPlayerVisible = true;
+
+    public void SetPlayerVisible(bool visible)
+    {
+        isPlayerVisible = visible;
+    }
+
 
 
 

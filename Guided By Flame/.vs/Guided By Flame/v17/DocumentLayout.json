@@ -3,11 +3,23 @@
   "WorkspaceRootPath": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|d:\\sobek\\guidedbyflame\\guided by flame\\assets\\scripts\\deathscreenmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\deathscreenmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\enemyai_second.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\enemyai_second.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|d:\\sobek\\guidedbyflame\\guided by flame\\assets\\scripts\\pulsatetext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\playermovement.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\playermovement.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|d:\\sobek\\guidedbyflame\\guided by flame\\assets\\scripts\\playerhealth.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\playerhealth.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerIndicator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:Assets\\Scripts\\PlayerIndicator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\pulsatetext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\pulsatetext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
@@ -15,12 +27,12 @@
       "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\deathscreenui.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\playerhealth.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\playerhealth.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\deathscreenmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\deathscreenmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\enemyai_second.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\enemyai_second.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\assets\\scripts\\playerhiding2d.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D174112A-7588-37D4-6436-0ABE9A5C6A23}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\playerhiding2d.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -30,69 +42,111 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 0,
+          "SelectedChildIndex": 7,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
+              "Title": "PlayerHealth.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHealth.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\PlayerHealth.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHealth.cs",
+              "RelativeToolTip": "Assets\\Scripts\\PlayerHealth.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA4AAAAFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-29T23:17:49.797Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "PlayerIndicator.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerIndicator.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\PlayerIndicator.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerIndicator.cs",
+              "RelativeToolTip": "Assets\\Scripts\\PlayerIndicator.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABEAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-29T16:05:06.731Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "playerMovement.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\playerMovement.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\playerMovement.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\playerMovement.cs",
+              "RelativeToolTip": "Assets\\Scripts\\playerMovement.cs",
+              "ViewState": "AgIAAEcAAAAAAAAAAAAwwGMAAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-29T14:58:42.028Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "PlayerHiding2D.cs",
+              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHiding2D.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\PlayerHiding2D.cs",
+              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHiding2D.cs",
+              "RelativeToolTip": "Assets\\Scripts\\PlayerHiding2D.cs",
+              "ViewState": "AgIAAEoAAAAAAAAAAAAQwFEAAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-29T14:23:34.87Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
               "Title": "DeathScreenManager.cs",
               "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenManager.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\DeathScreenManager.cs",
               "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenManager.cs",
               "RelativeToolTip": "Assets\\Scripts\\DeathScreenManager.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA0AAAAFAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAABJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-05-27T21:57:30.238Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 4,
               "Title": "PulsateText.cs",
               "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PulsateText.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PulsateText.cs",
               "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PulsateText.cs",
               "RelativeToolTip": "Assets\\Scripts\\PulsateText.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA8AAAAFAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABEAAAA1AAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-05-27T21:22:36.212Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 5,
               "Title": "DeathScreenUI.cs",
               "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenUI.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\DeathScreenUI.cs",
               "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\DeathScreenUI.cs",
               "RelativeToolTip": "Assets\\Scripts\\DeathScreenUI.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABAAAAAhAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABwAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-05-27T21:10:50.405Z"
+              "WhenOpened": "2025-05-27T21:10:50.405Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
-              "Title": "PlayerHealth.cs",
-              "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHealth.cs",
-              "RelativeDocumentMoniker": "Assets\\Scripts\\PlayerHealth.cs",
-              "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\PlayerHealth.cs",
-              "RelativeToolTip": "Assets\\Scripts\\PlayerHealth.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA4AAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-05-27T20:51:17.141Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 0,
               "Title": "EnemyAI_Second.cs",
               "DocumentMoniker": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\EnemyAI_Second.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\EnemyAI_Second.cs",
               "ToolTip": "D:\\SOBEK\\GuidedByFlame\\Guided By Flame\\Assets\\Scripts\\EnemyAI_Second.cs",
               "RelativeToolTip": "Assets\\Scripts\\EnemyAI_Second.cs",
-              "ViewState": "AgIAAGIAAAAAAAAAAAAowH0AAAABAAAAAAAAAA==",
+              "ViewState": "AgIAAFcAAAAAAAAAAAAuwJ0AAAAoAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-05-27T20:28:37.45Z"
+              "WhenOpened": "2025-05-27T20:28:37.45Z",
+              "EditorCaption": ""
             }
           ]
         }
