@@ -10,6 +10,7 @@ public class PlayerHiding : MonoBehaviour
 
     private SpriteRenderer spriteRenderer;
     private EnemyAI_Second enemyAI;
+    private SkeletonAI skeletonAI;
     private playerMovement playerMovement;
 
     private GameObject[] hidingSpots;
@@ -23,6 +24,7 @@ public class PlayerHiding : MonoBehaviour
         spriteRenderer = GetComponent<SpriteRenderer>();
         playerMovement = GetComponent<playerMovement>();
         enemyAI = FindFirstObjectByType<EnemyAI_Second>();
+        skeletonAI = FindFirstObjectByType<SkeletonAI>();
         hidingSpots = GameObject.FindGameObjectsWithTag("HidingSpot");
 
         remainingHides = maxHides;
@@ -63,9 +65,10 @@ public class PlayerHiding : MonoBehaviour
 
         spriteRenderer.color = new Color(1, 1, 1, 0.3f);
         enemyAI?.SetPlayerVisible(false);
+        skeletonAI?.SetPlayerVisible(false);
         playerMovement?.SetCanMove(false);
 
-        Debug.Log($"Gracz siê ukry³. Pozosta³o ukryæ: {remainingHides}");
+        Debug.Log($"Gracz siï¿½ ukryï¿½. Pozostaï¿½o ukryï¿½: {remainingHides}");
     }
 
     void Unhide()
@@ -74,9 +77,10 @@ public class PlayerHiding : MonoBehaviour
 
         spriteRenderer.color = new Color(1, 1, 1, 1f);
         enemyAI?.SetPlayerVisible(true);
+        skeletonAI?.SetPlayerVisible(true);
         playerMovement?.SetCanMove(true);
 
-        Debug.Log("Gracz wyszed³ z kryjówki.");
+        Debug.Log("Gracz wyszedï¿½ z kryjï¿½wki.");
     }
 
     void FindNearestHidingSpot()
@@ -103,7 +107,7 @@ public class PlayerHiding : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position, hidingRange);
     }
 
-    // Opcjonalnie: metoda do odnawiania ukryæ
+    // Opcjonalnie: metoda do odnawiania ukryï¿½
     public void RefillHides(int amount)
     {
         remainingHides = Mathf.Min(remainingHides + amount, maxHides);

@@ -41,24 +41,27 @@ public class SkeletonAI : MonoBehaviour
         float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
         bool wasChasing = isChasingPlayer;
 
-        if (isPlayerVisible && distanceToPlayer <= detectionRange)
+        // Warunek rozpoczęcia pościgu
+        if (!isChasingPlayer && isPlayerVisible && distanceToPlayer <= detectionRange)
         {
             isChasingPlayer = true;
         }
 
-        if (isPlayerVisible && distanceToPlayer <= chaseStopDistance)
+        // Jeśli gracz w pościgu
+        if (isChasingPlayer)
         {
-            KillPlayer();
-            isChasingPlayer = false;
-        }
-        else if (isChasingPlayer)
-        {
-            if (isPlayerVisible && distanceToPlayer <= chaseMaxRange)
+            if (isPlayerVisible && distanceToPlayer <= chaseStopDistance)
+            {
+                KillPlayer();
+                isChasingPlayer = false;
+            }
+            else if (isPlayerVisible && distanceToPlayer <= chaseMaxRange)
             {
                 agent.SetDestination(playerTransform.position);
             }
             else
             {
+                // Gracz zniknął lub uciekł poza zasięg
                 isChasingPlayer = false;
                 GoToNextPatrolPoint();
             }
