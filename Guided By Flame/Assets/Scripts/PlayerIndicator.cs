@@ -2,9 +2,10 @@ using UnityEngine;
 
 public class PlayerIndicator : MonoBehaviour
 {
-    [SerializeField] private GameObject chaseIndicator; // np. UI z ikonk¹ lub sprite
+    [SerializeField] private GameObject chaseIndicator; // np. UI z ikonkï¿½ lub sprite
 
     private EnemyAI_Second enemyAI;
+    private SkeletonAI skeletonAI;
 
     void Start()
     {
@@ -16,7 +17,7 @@ public class PlayerIndicator : MonoBehaviour
 
         chaseIndicator.SetActive(false);
 
-        // ZnajdŸ wroga - jeœli masz wielu, trzeba zmieniæ logikê
+        // Znajdï¿½ wroga - jeï¿½li masz wielu, trzeba zmieniï¿½ logikï¿½
         enemyAI = FindFirstObjectByType<EnemyAI_Second>();
         if (enemyAI != null)
         {
@@ -25,6 +26,16 @@ public class PlayerIndicator : MonoBehaviour
         else
         {
             Debug.LogWarning("Nie znaleziono EnemyAI_Second");
+        }
+
+        skeletonAI = FindFirstObjectByType<SkeletonAI>();
+        if (skeletonAI != null)
+        {
+            skeletonAI.OnChaseStatusChanged += HandleChaseStatusChanged;
+        }
+        else
+        {
+            Debug.LogWarning("Nie znaleziono SkeletonAI");
         }
     }
 
@@ -38,6 +49,11 @@ public class PlayerIndicator : MonoBehaviour
         if (enemyAI != null)
         {
             enemyAI.OnChaseStatusChanged -= HandleChaseStatusChanged;
+        }
+
+        if (skeletonAI != null)
+        {
+            skeletonAI.OnChaseStatusChanged -= HandleChaseStatusChanged;
         }
     }
 }
