@@ -1,0 +1,90 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &1
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5e6fedc2472449cead18ef23b5cb30d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Library:
+  - m_Name: Idle
+    m_Hash: 1008081451
+    m_CategoryList: []
+    m_OverrideEntries:
+    - m_Name: Skull_0
+      m_Hash: 932689850
+      m_Sprite: {fileID: -2739807658926110822, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -2739807658926110822, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+    - m_Name: Skull_1
+      m_Hash: 9471788
+      m_Sprite: {fileID: -8375587311600527847, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -8375587311600527847, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+    - m_Name: Skull_2
+      m_Hash: 429512342
+      m_Sprite: {fileID: -3927005747788755955, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -3927005747788755955, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+    - m_Name: Skull_3
+      m_Hash: 782165504
+      m_Sprite: {fileID: -6772826663682122736, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -6772826663682122736, guid: 4373931864b32a94289a56c9820dcdff, type: 3}
+    m_FromMain: 0
+    m_EntryOverrideCount: 4
+  - m_Name: Walk
+    m_Hash: 765711723
+    m_CategoryList: []
+    m_OverrideEntries:
+    - m_Name: SkullAnim_0
+      m_Hash: 761749913
+      m_Sprite: {fileID: -7272946143707482287, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -7272946143707482287, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    - m_Name: SkullAnim_1
+      m_Hash: 442519823
+      m_Sprite: {fileID: -1146138903216743600, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -1146138903216743600, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    - m_Name: SkullAnim_2
+      m_Hash: 57213109
+      m_Sprite: {fileID: -1723430225033719200, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -1723430225033719200, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    - m_Name: SkullAnim_3
+      m_Hash: 879636515
+      m_Sprite: {fileID: -7641848284607248544, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -7641848284607248544, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    - m_Name: SkullAnim_4
+      m_Hash: 705340800
+      m_Sprite: {fileID: -1872535540296674150, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -1872535540296674150, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    - m_Name: SkullAnim_5
+      m_Hash: 487429398
+      m_Sprite: {fileID: -8220942822505619384, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: -8220942822505619384, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    - m_Name: SkullAnim_6
+      m_Hash: 67421356
+      m_Sprite: {fileID: 3456394951233420623, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 3456394951233420623, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    - m_Name: SkullAnim_7
+      m_Hash: 855897146
+      m_Sprite: {fileID: 5708602778362514735, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+      m_FromMain: 0
+      m_SpriteOverride: {fileID: 5708602778362514735, guid: b8459e750a3cc2946b307e7fb9adda2a, type: 3}
+    m_FromMain: 0
+    m_EntryOverrideCount: 8
+  m_PrimaryLibraryGUID: 
+  m_ModificationHash: 638849902477082300
+  m_Version: 1
