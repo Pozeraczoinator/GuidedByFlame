@@ -30,6 +30,7 @@ public class EnemyAI_Second : MonoBehaviour
     };
 
     [SerializeField] private Transform playerTransform;
+    private MusicManager musicManager;
 
     [SerializeField] private float detectionRange = 5f;
     [SerializeField] private float chaseStopDistance = 1.5f;
@@ -56,6 +57,8 @@ public class EnemyAI_Second : MonoBehaviour
         }
 
         spriteResolver = GetComponent<SpriteResolver>();
+        musicManager = FindAnyObjectByType<MusicManager>();
+        OnChaseStatusChanged += HandleChaseMusic;
     }
 
     void Update()
@@ -136,8 +139,6 @@ public class EnemyAI_Second : MonoBehaviour
         currentTargetIndex = (currentTargetIndex + 1) % targets.Length;
         agent.SetDestination(targets[currentTargetIndex].position);
 
-        Debug.Log("dupa" + currentTargetIndex);
-
     }
 
 
@@ -187,6 +188,15 @@ public class EnemyAI_Second : MonoBehaviour
         isPlayerVisible = visible;
     }
 
+    private void HandleChaseMusic(bool isChasing)
+{
+    if (musicManager == null) return;
+
+    if (isChasing)
+        musicManager.StartChase();
+    else
+        musicManager.StopChase();
+}
 
 
 

@@ -7,6 +7,9 @@ public class PlayerIndicator : MonoBehaviour
     private EnemyAI_Second enemyAI;
     private SkeletonAI skeletonAI;
 
+    private SkullAI skullAI;
+    private MusicManager musicManager;
+
     void Start()
     {
         if (chaseIndicator == null)
@@ -14,7 +17,7 @@ public class PlayerIndicator : MonoBehaviour
             Debug.LogWarning("ChaseIndicator nie przypisany!");
             return;
         }
-
+        musicManager = FindAnyObjectByType<MusicManager>();
         chaseIndicator.SetActive(false);
 
         // Znajd� wroga - je�li masz wielu, trzeba zmieni� logik�
@@ -26,6 +29,16 @@ public class PlayerIndicator : MonoBehaviour
         else
         {
             Debug.LogWarning("Nie znaleziono EnemyAI_Second");
+        }
+
+        skullAI = FindFirstObjectByType<SkullAI>();
+        if (skullAI != null)
+        {
+            skullAI.OnChaseStatusChanged += HandleChaseStatusChanged;
+        }
+        else
+        {
+            Debug.LogWarning("Nie znaleziono SkullAI");
         }
 
         skeletonAI = FindFirstObjectByType<SkeletonAI>();
@@ -42,6 +55,7 @@ public class PlayerIndicator : MonoBehaviour
     void HandleChaseStatusChanged(bool isChasing)
     {
         chaseIndicator.SetActive(isChasing);
+        musicManager.StartChase();
     }
 
     void OnDestroy()
@@ -49,6 +63,11 @@ public class PlayerIndicator : MonoBehaviour
         if (enemyAI != null)
         {
             enemyAI.OnChaseStatusChanged -= HandleChaseStatusChanged;
+        }
+
+        if (skullAI != null)
+        {
+            skullAI.OnChaseStatusChanged -= HandleChaseStatusChanged;
         }
 
         if (skeletonAI != null)

@@ -5,14 +5,48 @@ public class DeathScreenManager : MonoBehaviour
 {
     public void OnRespawnButton()
     {
-        // Prze³aduj scenê (respawn gracza)
-        Debug.Log("Klikniêto Respawn!");
+        // PrzeÅ‚aduj scenÄ™ (respawn gracza)
+        Debug.Log("KlikniÄ™to Respawn!");
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     public void OnReturnToMenu()
     {
-        // Za³aduj g³ówne menu (upewnij siê, ¿e doda³eœ scenê do build settings)
-        SceneManager.LoadScene("MainMenu"); // <-- zamieñ na nazwê twojej sceny menu
+        // ZaÅ‚aduj gÅ‚Ã³wne menu (upewnij siÄ™, Å¼e dodaÅ‚eÅ› scenÄ™ do build settings)
+        SceneManager.LoadScene("MainMenu"); // <-- zamieÅ„ na nazwÄ™ twojej sceny menu
     }
+
+
+    public void OnNextLevelButton()
+    {
+        string currentScene = SceneManager.GetActiveScene().name;
+
+        switch (currentScene)
+        {
+            case "SampleScene":
+                SceneManager.LoadScene("SecondLevel");
+                break;
+
+            case "SecondLevel":
+                SceneManager.LoadScene("ThirdLevel");
+                break;
+
+            case "ThirdLevel":
+                Debug.Log("To byÅ‚ ostatni poziom â€“ wracamy do menu.");
+                SceneManager.LoadScene("MainMenu");
+                break;
+
+            default:
+                Debug.LogWarning("Nieznana scena: " + currentScene);
+                break;
+        }
+    }
+
+
+    public void onNewGameButton()
+    {
+        SceneManager.LoadScene("SampleScene");
+    }
+
+
 }

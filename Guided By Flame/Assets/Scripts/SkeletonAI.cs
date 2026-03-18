@@ -16,6 +16,7 @@ public class SkeletonAI : MonoBehaviour
     private bool isChasingPlayer = false;
     private bool isPlayerVisible = true;
     private SkeletonAnimation animationHandler;
+    private MusicManager musicManager;
 
     public delegate void ChaseStatusChanged(bool isChasing);
     public event ChaseStatusChanged OnChaseStatusChanged;
@@ -32,6 +33,9 @@ public class SkeletonAI : MonoBehaviour
         {
             agent.SetDestination(targets[currentTargetIndex].position);
         }
+
+        musicManager = FindAnyObjectByType<MusicManager>();
+        OnChaseStatusChanged += HandleChaseMusic;
     }
 
     void Update()
@@ -54,6 +58,7 @@ public class SkeletonAI : MonoBehaviour
             {
                 KillPlayer();
                 isChasingPlayer = false;
+
             }
             else if (isPlayerVisible && distanceToPlayer <= chaseMaxRange)
             {
@@ -107,4 +112,14 @@ public class SkeletonAI : MonoBehaviour
     {
         isPlayerVisible = visible;
     }
+    
+    private void HandleChaseMusic(bool isChasing)
+{
+    if (musicManager == null) return;
+
+    if (isChasing)
+        musicManager.StartChase();
+    else
+        musicManager.StopChase();
+}
 }
