@@ -1,0 +1,2 @@
+TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;AvgExecutionTicks;AvgGCAllocBytes;ExploredNodes;PathLength;DirectionChanges;PathSmoothness;CPUTemperature
+0;GreedyBestFirst;2;3;28;15;DynamicAddWalls;0,03;True;4,902100;49021;20480;0,097638;0,094000;0,106200;0,002558;976,38;20480,00;29;32,1400;5;0,155569;79,0

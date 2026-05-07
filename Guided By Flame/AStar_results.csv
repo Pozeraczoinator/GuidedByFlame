@@ -1,0 +1,4 @@
+TestID;StartX;StartY;TargetX;TargetY;PathFound;ExecutionTimeMs;ExploredNodes;PathLength;SimulatedFPS
+0;2;3;28;15;True;0,1038;28;30,97;98,97
+1;15;9;16;10;False;1,3401;624;0,00;88,18
+2;5;5;5;15;True;0,0489;11;10,00;99,51
