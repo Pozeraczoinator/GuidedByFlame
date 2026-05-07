@@ -93,8 +93,9 @@ namespace Pathfinding.Algorithms
                     if (!grid.IsWalkable(neighborPos) || closedSet.Contains(neighborPos))
                         continue;
 
-                    // Karanie zmiany kierunku (dodaje małą losowość lub faworyzuje linie proste)
-                    int moveCostToNeighbor = currentNode.GCost + GetDistance(currentNode, neighbor);
+                    // DS3: Uwzględniamy wagę terenu (GetMovementCost).
+                    float terrainCost = grid.GetMovementCost(neighbor.X, neighbor.Y);
+                    int moveCostToNeighbor = currentNode.GCost + (int)(GetDistance(currentNode, neighbor) * terrainCost);
                     if (currentNode.Parent != null)
                     {
                         Vector2Int currentDir = new Vector2Int(currentNode.X - currentNode.Parent.X, currentNode.Y - currentNode.Parent.Y);

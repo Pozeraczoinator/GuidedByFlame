@@ -25,7 +25,7 @@ MonoBehaviour:
   m_MinSize: {x: 300, y: 100}
   m_MaxSize: {x: 24288, y: 16192}
   vertical: 0
-  controlID: 96
+  controlID: 3219
   draggingID: 0
 --- !u!114 &2
 MonoBehaviour:
@@ -107,18 +107,18 @@ MonoBehaviour:
       y: 21
       width: 837.2001
       height: 93.79999
-    m_Scale: {x: 1.1382564, y: 1.1382564}
-    m_Translation: {x: 418.59998, y: 46.899963}
+    m_Scale: {x: 1.1484692, y: 1.1484692}
+    m_Translation: {x: 418.5998, y: 46.89978}
     m_MarginLeft: 0
     m_MarginRight: 0
     m_MarginTop: 0
     m_MarginBottom: 0
     m_LastShownAreaInsideMargins:
       serializedVersion: 2
-      x: -367.75543
-      y: -41.20334
-      width: 735.5109
-      height: 82.40673
+      x: -364.485
+      y: -40.836777
+      width: 728.9704
+      height: 81.67393
     m_MinimalGUI: 1
   m_defaultScale: 0.1085648
   m_LastWindowPixelSize: {x: 1046.5001, y: 143.49998}
@@ -192,7 +192,7 @@ MonoBehaviour:
     m_OverlaysVisible: 1
   m_SceneHierarchy:
     m_TreeViewState:
-      scrollPos: {x: 0, y: 0}
+      scrollPos: {x: 0, y: 18.200012}
       m_SelectedIDs: 
       m_LastClickedID: 0
       m_ExpandedIDs: 0cfbffff
@@ -244,7 +244,7 @@ MonoBehaviour:
   m_MinSize: {x: 100, y: 100}
   m_MaxSize: {x: 8096, y: 16192}
   vertical: 1
-  controlID: 60
+  controlID: 3183
   draggingID: 0
 --- !u!114 &6
 MonoBehaviour:
@@ -265,8 +265,8 @@ MonoBehaviour:
     y: 0
     width: 839.2001
     height: 576
-  m_MinSize: {x: 202, y: 226}
-  m_MaxSize: {x: 4002, y: 4026}
+  m_MinSize: {x: 200, y: 200}
+  m_MaxSize: {x: 4000, y: 4000}
   m_ActualView: {fileID: 7}
   m_Panes:
   - {fileID: 7}
@@ -1142,7 +1142,7 @@ MonoBehaviour:
     m_OverlaysVisible: 1
   m_LockTracker:
     m_IsLocked: 0
-  m_LastSelectedObjectID: 50130
+  m_LastSelectedObjectID: 50136
 --- !u!114 &11
 MonoBehaviour:
   m_ObjectHideFlags: 52
@@ -1277,7 +1277,7 @@ MonoBehaviour:
     m_CachedPref: -158
     m_ControlHash: -371814159
     m_PrefName: Preview_InspectorPreview
-  m_LastInspectedObjectInstanceID: -1
+  m_LastInspectedObjectInstanceID: 50136
   m_LastVerticalScrollValue: 0
   m_GlobalObjectId: 
   m_InspectorMode: 0

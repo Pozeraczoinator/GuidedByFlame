@@ -2,10 +2,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 using Pathfinding.Core;
 using Pathfinding.Algorithms;
 using Pathfinding.Benchmark;
+using Pathfinding.MapGenerators;
 
 namespace Pathfinding.Visualization
 {
@@ -47,8 +49,12 @@ namespace Pathfinding.Visualization
             Static,
             DynamicAddWalls,
             DynamicRemoveWalls,
-            DynamicToggle
+            DynamicToggle,
+            DS2_MovingObstacles,
+            DS3_WeightedTerrain
         }
+
+        public enum MapTopology { FromFile, OpenField, Maze, RoomCorridor, ScatteredBlock }
 
         // ─────────────────────────────────────────────────────────
         //  KONFIGURACJA Z INSPEKTORA
@@ -59,10 +65,10 @@ namespace Pathfinding.Visualization
         public BenchmarkMode benchmarkMode = BenchmarkMode.AllAlgorithms;
 
         [Header("═══ Scenariusz Testowy ═══")]
-        [Tooltip("Static = stała mapa.\nDynamicAddWalls = dodawanie ścian.\nDynamicRemoveWalls = usuwanie ścian.\nDynamicToggle = losowe przełączanie.")]
+        [Tooltip("Static / DynamicAddWalls / DynamicRemoveWalls / DynamicToggle / DS2_MovingObstacles / DS3_WeightedTerrain")]
         public ScenarioType scenario = ScenarioType.Static;
 
-        [Tooltip("Liczba zmian przeszkód między kolejnymi algorytmami w trybie Dynamic.")]
+        [Tooltip("Liczba zmian przeszkód między kolejnymi algorytmami w trybie Dynamic/DS1.")]
         [Range(1, 50)]
         public int dynamicChangesCount = 5;
 
@@ -86,6 +92,54 @@ namespace Pathfinding.Visualization
         [Header("═══ Monitoring Sprzętowy ═══")]
         [Tooltip("Czy mierzyć temperaturę CPU przy każdym teście (Windows only). Spowalnia ~100ms per pomiar.")]
         public bool monitorCPUTemperature = false;
+
+        [Header("═══ Generacja Map Proceduralnych ═══")]
+        [Tooltip("Źródło mapy: FromFile = wczytaj z pliku TXT, inne = generuj proceduralnie.")]
+        public MapTopology mapSource = MapTopology.FromFile;
+
+        [Tooltip("Zagęszczenie przeszkód dla map proceduralnych (0.0–0.5).")]
+        [Range(0f, 0.5f)]
+        public float proceduralDensity = 0.2f;
+
+        [Header("═══ Distance Bucketing (Naukowy Dobór Punktów) ═══")]
+        [Tooltip("Czy generować test cases automatycznie z distance bucketing zamiast czytać z pliku CSV.")]
+        public bool useDistanceBucketing = false;
+
+        [Tooltip("Ile par testowych na wiązkę dystansową (SHORT/MEDIUM/LONG).")]
+        [Range(5, 100)]
+        public int pairsPerBucket = 30;
+
+        [Tooltip("Ile par z nieosiągalnym celem (UNREACHABLE).")]
+        [Range(0, 20)]
+        public int unreachablePairs = 5;
+
+        [Header("═══ DS2: Ruchome Przeszkody ═══")]
+        [Tooltip("Liczba ruchomych przeszkód na mapie (patrol guards).")]
+        [Range(1, 20)]
+        public int movingObstacleCount = 3;
+
+        [Tooltip("Długość trasy patrol każdej przeszkody (w polach).")]
+        [Range(3, 20)]
+        public int patrolLength = 6;
+
+        [Header("═══ DS3: Dynamiczne Wagi Terenu ═══")]
+        [Tooltip("Wzorzec zmiany wag: Random / Radial (ogień) / Linear (fala).")]
+        public WeightedTerrainManager.ChangePattern weightChangePattern = WeightedTerrainManager.ChangePattern.Random;
+
+        [Tooltip("Ile pól zmienia wagę co krok.")]
+        [Range(1, 50)]
+        public int weightChangesPerStep = 10;
+
+        [Tooltip("Początkowe pokrycie pól z niedomyślnym kosztem (0.0–0.5).")]
+        [Range(0f, 0.5f)]
+        public float initialWeightCoverage = 0.1f;
+
+        [Header("═══ Batch Generator ═══")]
+        [Tooltip("Czy wygenerować wszystkie 64 kombinacje map przy starcie (zamiast benchmarku).")]
+        public bool runBatchGeneration = false;
+
+        [Tooltip("Katalog wyjściowy dla batch-generowanych map.")]
+        public string batchOutputDirectory = "GeneratedMaps";
 
         [Header("═══ Wizualizacja ═══")]
         [Tooltip("Prefabrykat kwadratu bazowego mapy (zwykły Sprite)")]
@@ -113,7 +167,7 @@ namespace Pathfinding.Visualization
         // ─────────────────────────────────────────────────────────
 
         private GridMap _gridMap;
-        private GridMap _originalGridMap; // Kopia oryginału do resetowania po dynamicznych zmianach
+        private GridMap _originalGridMap;
         private List<TestCase> _testCases = new List<TestCase>();
         private int _currentTestCaseIndex = 0;
         private SpriteRenderer[,] _basemapRenderers;
@@ -123,6 +177,10 @@ namespace Pathfinding.Visualization
         private bool _isVisualizing = false;
         private bool _isAutoRunning = false;
         private System.Random _shuffleRng;
+
+        // DS2/DS3 managery
+        private MovingObstacleManager _ds2Manager;
+        private WeightedTerrainManager _ds3Manager;
 
         private struct TestCase
         {
@@ -137,14 +195,42 @@ namespace Pathfinding.Visualization
         private void Start()
         {
             _shuffleRng = new System.Random(randomSeed);
-            LoadTestCases();
-            if (LoadGridMap())
+
+            // Tryb batch generation — generuj mapy i wyjdź
+            if (runBatchGeneration)
             {
-                _originalGridMap = _gridMap.Clone(); // Zachowaj oryginał
-                GenerateBasemapVisuals();
-                Debug.Log($"[Visualizer] Gotowy. Tryb: {benchmarkMode}, Scenariusz: {scenario}. " +
-                          $"Testy: {_testCases.Count}. Wciśnij SPACJĘ aby rozpocząć.");
+                RunBatchGeneration();
+                return;
             }
+
+            // Wczytaj lub wygeneruj mapę
+            bool mapLoaded = false;
+            if (mapSource == MapTopology.FromFile)
+            {
+                mapLoaded = LoadGridMap();
+            }
+            else
+            {
+                mapLoaded = GenerateProceduralMap();
+            }
+
+            if (!mapLoaded) return;
+
+            _originalGridMap = _gridMap.Clone();
+
+            // Wczytaj lub wygeneruj test cases
+            if (useDistanceBucketing)
+            {
+                GenerateDistanceBucketedTestCases();
+            }
+            else
+            {
+                LoadTestCases();
+            }
+
+            GenerateBasemapVisuals();
+            Debug.Log($"[Visualizer] Gotowy. Tryb: {benchmarkMode}, Scenariusz: {scenario}, " +
+                      $"Mapa: {mapSource}, Testy: {_testCases.Count}. Wciśnij SPACJĘ aby rozpocząć.");
         }
 
         private void Update()
@@ -208,17 +294,45 @@ namespace Pathfinding.Visualization
                     Debug.Log($"[Visualizer] ── Test {testId + 1}/{_testCases.Count} ── " +
                               $"Kolejność: {string.Join(" → ", GetAlgorithmNames(algorithmsToRun))}");
 
+                    // DS2: inicjalizacja ruchomych przeszkód per test case
+                    if (scenario == ScenarioType.DS2_MovingObstacles)
+                    {
+                        _ds2Manager = new MovingObstacleManager(randomSeed + testId);
+                        _ds2Manager.GenerateObstacles(_gridMap, movingObstacleCount, startPos, targetPos, patrolLength);
+                        RefreshBasemapColors();
+                    }
+
+                    // DS3: inicjalizacja wag terenu per test case
+                    if (scenario == ScenarioType.DS3_WeightedTerrain)
+                    {
+                        _ds3Manager = new WeightedTerrainManager(randomSeed + testId);
+                        _ds3Manager.InitializeWeights(_gridMap, weightChangePattern, initialWeightCoverage);
+                    }
+
                     foreach (var algorithm in algorithmsToRun)
                     {
                         // ─── Scenariusz dynamiczny: zmodyfikuj mapę PRZED pomiarem ───
                         List<Vector2Int> dynamicChanges = null;
-                        if (scenario != ScenarioType.Static)
+                        if (scenario == ScenarioType.DynamicAddWalls ||
+                            scenario == ScenarioType.DynamicRemoveWalls ||
+                            scenario == ScenarioType.DynamicToggle)
                         {
                             dynamicChanges = ApplyDynamicScenario(startPos, targetPos);
-                            RefreshBasemapColors(); // Odśwież widok mapy
+                            RefreshBasemapColors();
+                        }
+                        else if (scenario == ScenarioType.DS2_MovingObstacles && _ds2Manager != null)
+                        {
+                            dynamicChanges = _ds2Manager.StepAll(_gridMap);
+                            // Weryfikacja: upewnij się że WSZYSTKIE przeszkody blokują swoje pola
+                            _ds2Manager.VerifyObstaclePositions(_gridMap);
+                            RefreshBasemapColors();
+                        }
+                        else if (scenario == ScenarioType.DS3_WeightedTerrain && _ds3Manager != null)
+                        {
+                            dynamicChanges = _ds3Manager.ApplyDynamicWeightChanges(
+                                _gridMap, weightChangePattern, weightChangesPerStep, startPos, targetPos);
                         }
 
-                        // Zmierz aktualną gęstość (może się zmienić w trybie dynamicznym)
                         float currentDensity = (scenario == ScenarioType.Static)
                             ? mapDensity
                             : 1f - ((float)_gridMap.CountWalkable() / (_gridMap.Width * _gridMap.Height));
@@ -229,7 +343,6 @@ namespace Pathfinding.Visualization
                         MeasureAlgorithm(algorithm, _gridMap, startPos, targetPos,
                             testId, currentDensity, out metrics, out visualResult);
 
-                        // Monitoring temperatury per test
                         if (monitorCPUTemperature)
                         {
                             metrics.CPUTemperature = HardwareMonitor.GetCPUTemperature();
@@ -245,7 +358,6 @@ namespace Pathfinding.Visualization
                         StartCoroutine(VisualizeRoutine(visualResult, startPos, targetPos, 
                             algorithm.AlgorithmName, dynamicChanges));
 
-                        // Czekaj aż animacja się zakończy
                         while (_isVisualizing)
                         {
                             yield return null;
@@ -258,14 +370,26 @@ namespace Pathfinding.Visualization
                                   $"Smoothness: {metrics.PathSmoothness:F4}");
 
                         // ─── KROK 4: Cofnij zmiany dynamiczne (resetuj mapę) ───
-                        if (dynamicChanges != null && dynamicChanges.Count > 0)
+                        if (scenario == ScenarioType.DynamicAddWalls ||
+                            scenario == ScenarioType.DynamicRemoveWalls ||
+                            scenario == ScenarioType.DynamicToggle)
                         {
-                            RevertDynamicChanges(dynamicChanges);
-                            RefreshBasemapColors();
+                            if (dynamicChanges != null && dynamicChanges.Count > 0)
+                            {
+                                RevertDynamicChanges(dynamicChanges);
+                                RefreshBasemapColors();
+                            }
                         }
 
-                        // ─── KROK 5: Pauza ───
                         yield return new WaitForSeconds(pauseBetweenTests);
+                    }
+
+                    // Po zakończeniu test case'a: resetuj mapę dla DS2/DS3
+                    if (scenario == ScenarioType.DS2_MovingObstacles ||
+                        scenario == ScenarioType.DS3_WeightedTerrain)
+                    {
+                        _gridMap = _originalGridMap.Clone();
+                        RefreshBasemapColors();
                     }
                 }
             }
@@ -331,6 +455,8 @@ namespace Pathfinding.Visualization
                 ScenarioType.DynamicAddWalls => "DynamicAddWalls",
                 ScenarioType.DynamicRemoveWalls => "DynamicRemoveWalls",
                 ScenarioType.DynamicToggle => "DynamicToggle",
+                ScenarioType.DS2_MovingObstacles => "DS2_MovingObstacles",
+                ScenarioType.DS3_WeightedTerrain => "DS3_WeightedTerrain",
                 _ => "Static"
             };
 
@@ -433,17 +559,31 @@ namespace Pathfinding.Visualization
         {
             if (benchmarkMode == BenchmarkMode.AllAlgorithms)
             {
-                return new List<IPathfindingAlgorithm>
+                var list = new List<IPathfindingAlgorithm>
                 {
                     new AStarAlgorithm(),
                     new DijkstraAlgorithm(),
                     new GreedyBestFirstAlgorithm(),
-                    new CustomGreedyAlgorithm(),
-                    new JumpPointSearchAlgorithm()
+                    new CustomGreedyAlgorithm()
                 };
+
+                // JPS pomijany w DS3 — nie wspiera weighted gridów
+                if (scenario != ScenarioType.DS3_WeightedTerrain)
+                {
+                    list.Add(new JumpPointSearchAlgorithm());
+                }
+
+                return list;
             }
             else
             {
+                // W trybie SingleAlgorithm: ostrzegaj jeśli JPS + DS3
+                if (selectedAlgorithm == AlgorithmChoice.JumpPointSearch &&
+                    scenario == ScenarioType.DS3_WeightedTerrain)
+                {
+                    Debug.LogWarning("[Visualizer] JPS nie wspiera weighted gridów (DS3). Przełączam na A*.");
+                    return new List<IPathfindingAlgorithm> { new AStarAlgorithm() };
+                }
                 return new List<IPathfindingAlgorithm> { CreateSelectedAlgorithm() };
             }
         }
@@ -760,6 +900,115 @@ namespace Pathfinding.Visualization
 
             Debug.Log($"[Visualizer] {algorithmName}: Animacja zakończona.");
             _isVisualizing = false;
+        }
+        // ─────────────────────────────────────────────────────────
+        //  GENERACJA MAP PROCEDURALNYCH
+        // ─────────────────────────────────────────────────────────
+
+        private bool GenerateProceduralMap()
+        {
+            IMapGenerator generator = mapSource switch
+            {
+                MapTopology.OpenField => new OpenFieldGenerator(),
+                MapTopology.Maze => new MazeGenerator(),
+                MapTopology.RoomCorridor => new RoomCorridorGenerator(),
+                MapTopology.ScatteredBlock => new ScatteredBlockGenerator(),
+                _ => null
+            };
+
+            if (generator == null)
+            {
+                Debug.LogError("[Visualizer] Nieznana topologia mapy.");
+                return false;
+            }
+
+            // Użyj rozmiarów z istniejącej mapy (32x20) lub z pola
+            int w = 32, h = 20;
+            _gridMap = generator.Generate(w, h, proceduralDensity, randomSeed);
+            Debug.Log($"[Visualizer] Wygenerowano mapę proceduralną: {generator.TopologyName} " +
+                      $"{w}x{h}, gęstość={proceduralDensity:P0}, seed={randomSeed}");
+            return true;
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  DISTANCE BUCKETING — NAUKOWY DOBÓR PUNKTÓW
+        // ─────────────────────────────────────────────────────────
+
+        private void GenerateDistanceBucketedTestCases()
+        {
+            var selector = new TestPointSelector(randomSeed);
+            var enhanced = selector.GenerateTestCases(_gridMap, pairsPerBucket, unreachablePairs);
+
+            _testCases.Clear();
+            foreach (var etc in enhanced)
+            {
+                _testCases.Add(new TestCase
+                {
+                    startX = etc.StartX, startY = etc.StartY,
+                    targetX = etc.TargetX, targetY = etc.TargetY
+                });
+            }
+
+            // Eksportuj CSV z metadanymi
+            string csvPath = Path.Combine(Application.dataPath, "..", "EnhancedTestCases.csv");
+            TestPointSelector.ExportToCsv(enhanced, csvPath);
+            Debug.Log($"[Visualizer] Distance bucketing: {_testCases.Count} par " +
+                      $"(SHORT: {pairsPerBucket}, MEDIUM: {pairsPerBucket}, " +
+                      $"LONG: {pairsPerBucket}, UNREACHABLE: {unreachablePairs})");
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  BATCH GENERATOR
+        // ─────────────────────────────────────────────────────────
+
+        private void RunBatchGeneration()
+        {
+            string basePath = Path.Combine(Application.dataPath, "..", batchOutputDirectory);
+            if (!Directory.Exists(basePath))
+                Directory.CreateDirectory(basePath);
+
+            var generators = new List<IMapGenerator>
+            {
+                new OpenFieldGenerator(),
+                new MazeGenerator(),
+                new RoomCorridorGenerator(),
+                new ScatteredBlockGenerator()
+            };
+
+            float[] densities = { 0.10f, 0.20f, 0.30f, 0.40f };
+            int[] seeds = { 42, 123, 256, 789 };
+            int total = generators.Count * densities.Length * seeds.Length;
+            int generated = 0;
+
+            Debug.Log($"[BatchGenerator] ═══ START ═══ Generuję {total} map");
+
+            foreach (var gen in generators)
+            {
+                string topoDir = Path.Combine(basePath, gen.TopologyName);
+                if (!Directory.Exists(topoDir))
+                    Directory.CreateDirectory(topoDir);
+
+                foreach (float density in densities)
+                {
+                    foreach (int seed in seeds)
+                    {
+                        GridMap map = gen.Generate(32, 20, density, seed);
+
+                        string fileName = MapExporter.GenerateFileName(gen.TopologyName, 32, 20, density, seed);
+                        MapExporter.ExportToFile(map, Path.Combine(topoDir, fileName));
+
+                        // Test cases z distance bucketing
+                        var selector = new TestPointSelector(seed);
+                        var testCases = selector.GenerateTestCases(map, pairsPerBucket, unreachablePairs);
+                        string csvName = Path.GetFileNameWithoutExtension(fileName) + "_TestCases.csv";
+                        TestPointSelector.ExportToCsv(testCases, Path.Combine(topoDir, csvName));
+
+                        generated++;
+                    }
+                }
+            }
+
+            Debug.Log($"[BatchGenerator] ═══ ZAKOŃCZONO ═══ {generated} map w: {Path.GetFullPath(basePath)}");
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Linq;
 using UnityEngine;
 using Pathfinding.Core;
 using Pathfinding.Algorithms;
+using Pathfinding.MapGenerators;
 
 namespace Pathfinding.Benchmark
 {
@@ -19,7 +20,7 @@ namespace Pathfinding.Benchmark
     ///    → eliminacja thermal throttling bias
     /// 3. Pomiar GC Alloc (GC.GetTotalMemory delta)
     /// 4. Pomiar PathSmoothness (liczba zmian kierunku / długość ścieżki)
-    /// 5. Tryb statyczny i dynamiczny (konfigurowane z Inspektora)
+    /// 5. Tryb statyczny i dynamiczny (DS1/DS2/DS3, konfigurowane z Inspektora)
     /// 6. Jeden wspólny plik CSV — łatwy import do R/Python/Excel
     /// 7. Statystyki: Avg, Min, Max, StdDev czasu wykonania
     ///
@@ -52,26 +53,52 @@ namespace Pathfinding.Benchmark
         public string outputFileName = "benchmark_results.csv";
 
         [Header("═══ Scenariusz ═══")]
-        [Tooltip("Tryb testu: Static = stała mapa, Dynamic = modyfikacje przeszkód między iteracjami.")]
-        public ScenarioType scenario = ScenarioType.Static;
+        [Tooltip("Tryb testu: Static, DS1_WallToggle, DS2_MovingObstacles, DS3_WeightedTerrain.")]
+        public DynamicScenario scenario = DynamicScenario.Static;
 
         [Tooltip("Seed RNG do generowania map proceduralnych. Ten sam seed = te same wyniki.")]
         public int randomSeed = 42;
 
-        [Header("═══ Scenariusz Dynamiczny ═══")]
+        [Header("═══ Generacja Map ═══")]
         [Tooltip("Czy generować mapy proceduralne z różnym zagęszczeniem zamiast czytać Map.txt.")]
         public bool useProceduralMaps = false;
 
-        [Tooltip("Wymiar mapy proceduralnej (kwadrat NxN).")]
+        [Tooltip("Wymiar mapy proceduralnej — szerokość.")]
         [Range(10, 500)]
-        public int proceduralMapSize = 50;
+        public int proceduralMapWidth = 32;
+
+        [Tooltip("Wymiar mapy proceduralnej — wysokość.")]
+        [Range(10, 500)]
+        public int proceduralMapHeight = 20;
 
         [Tooltip("Poziomy zagęszczenia przeszkód do przetestowania (np. 0.1, 0.2, 0.3, 0.4).")]
         public float[] obstacleDensityLevels = { 0.10f, 0.20f, 0.30f, 0.40f };
 
-        [Tooltip("Liczba zmian przeszkód między iteracjami w trybie Dynamic.")]
+        [Header("═══ DS1: Wall Toggle ═══")]
+        [Tooltip("Liczba zmian przeszkód między iteracjami w trybie DS1.")]
         [Range(1, 100)]
         public int dynamicChangesPerIteration = 5;
+
+        [Header("═══ DS2: Moving Obstacles ═══")]
+        [Tooltip("Liczba ruchomych przeszkód na mapie.")]
+        [Range(1, 20)]
+        public int movingObstacleCount = 3;
+
+        [Tooltip("Długość trasy patrol każdej przeszkody (w polach).")]
+        [Range(3, 20)]
+        public int patrolLength = 6;
+
+        [Header("═══ DS3: Weighted Terrain ═══")]
+        [Tooltip("Wzorzec zmiany wag terenu.")]
+        public WeightedTerrainManager.ChangePattern weightChangePattern = WeightedTerrainManager.ChangePattern.Random;
+
+        [Tooltip("Ile pól zmienia wagę co krok w DS3.")]
+        [Range(1, 50)]
+        public int weightChangesPerStep = 10;
+
+        [Tooltip("Początkowe pokrycie pól z niedomyślnym kosztem (0.0–0.5).")]
+        [Range(0f, 0.5f)]
+        public float initialWeightCoverage = 0.1f;
 
         [Header("═══ Monitoring Sprzętowy ═══")]
         [Tooltip("Czy zapisywać temperaturę CPU na początku i końcu benchmarku (Windows only).")]
@@ -81,10 +108,12 @@ namespace Pathfinding.Benchmark
         //  TYPY
         // ─────────────────────────────────────────────────────────
 
-        public enum ScenarioType
+        public enum DynamicScenario
         {
             Static,
-            Dynamic
+            DS1_WallToggle,
+            DS2_MovingObstacles,
+            DS3_WeightedTerrain
         }
 
         private struct TestCase
@@ -98,6 +127,7 @@ namespace Pathfinding.Benchmark
         // ─────────────────────────────────────────────────────────
 
         private List<IPathfindingAlgorithm> _algorithms;
+        private List<IPathfindingAlgorithm> _algorithmsDS3; // Bez JPS
         private GridMap _gridMap;
         private System.Random _shuffleRng;
 
@@ -114,6 +144,15 @@ namespace Pathfinding.Benchmark
                 new GreedyBestFirstAlgorithm(),
                 new CustomGreedyAlgorithm(),
                 new JumpPointSearchAlgorithm()
+            };
+
+            // DS3: JPS pomijany — nie wspiera weighted gridów
+            _algorithmsDS3 = new List<IPathfindingAlgorithm>
+            {
+                new AStarAlgorithm(),
+                new DijkstraAlgorithm(),
+                new GreedyBestFirstAlgorithm(),
+                new CustomGreedyAlgorithm()
             };
 
             _shuffleRng = new System.Random(randomSeed);
@@ -228,22 +267,42 @@ namespace Pathfinding.Benchmark
         }
 
         // ─────────────────────────────────────────────────────────
-        //  BENCHMARK — TRYB STATYCZNY (mapa z pliku)
+        //  WYBÓR ALGORYTMÓW NA PODSTAWIE SCENARIUSZA
         // ─────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Główna coroutine benchmarku dla trybu z plikiem mapy.
-        /// Obsługuje zarówno Static jak i Dynamic scenarios.
-        /// </summary>
+        private List<IPathfindingAlgorithm> GetAlgorithmsForScenario()
+        {
+            return scenario == DynamicScenario.DS3_WeightedTerrain ? _algorithmsDS3 : _algorithms;
+        }
+
+        private string GetScenarioLabel()
+        {
+            switch (scenario)
+            {
+                case DynamicScenario.Static: return "Static";
+                case DynamicScenario.DS1_WallToggle: return "DS1_WallToggle";
+                case DynamicScenario.DS2_MovingObstacles: return "DS2_MovingObstacles";
+                case DynamicScenario.DS3_WeightedTerrain: return "DS3_WeightedTerrain";
+                default: return "Unknown";
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  BENCHMARK — TRYB Z PLIKU MAPY
+        // ─────────────────────────────────────────────────────────
+
         private IEnumerator RunBenchmarkCoroutine()
         {
             List<TestCase> testCases = LoadTestCases();
             if (testCases.Count == 0) yield break;
 
             string resultsPath = Path.Combine(Application.dataPath, "..", outputFileName);
+            string scenarioLabel = GetScenarioLabel();
+            var activeAlgorithms = GetAlgorithmsForScenario();
+
             UnityEngine.Debug.Log($"[BenchmarkManager] Start benchmarku. Iteracje: {testIterations}, " +
-                                  $"Algorytmy: {_algorithms.Count}, Testy: {testCases.Count}, " +
-                                  $"Tryb: {scenario}");
+                                  $"Algorytmy: {activeAlgorithms.Count}, Testy: {testCases.Count}, " +
+                                  $"Tryb: {scenarioLabel}");
 
             // Monitoring temperatury — początek
             float tempStart = -1f;
@@ -274,34 +333,27 @@ namespace Pathfinding.Benchmark
                     }
 
                     // Randomizacja kolejności algorytmów — eliminacja thermal throttling bias
-                    ShuffleList(_algorithms);
+                    ShuffleList(activeAlgorithms);
 
-                    // Dla każdego algorytmu — zbierz wyniki
-                    foreach (var algorithm in _algorithms)
+                    foreach (var algorithm in activeAlgorithms)
                     {
-                        GridMap testGrid = (scenario == ScenarioType.Dynamic)
+                        GridMap testGrid = (scenario != DynamicScenario.Static)
                             ? _gridMap.Clone()
                             : _gridMap;
 
                         BenchmarkMetrics metrics = RunAlgorithmBenchmark(
                             algorithm, testGrid, startPos, targetPos, testIdx,
-                            scenario == ScenarioType.Dynamic ? "Dynamic" : "Static",
-                            mapDensity
+                            scenarioLabel, mapDensity
                         );
 
                         writer.WriteLine(metrics.ToCsvRow());
-
-                        // yield po KAŻDYM algorytmie — daje Unity oddech między pomiarami
                         yield return null;
                     }
 
-                    // Progress log co 10 testów
                     if (testIdx % 10 == 0 || testIdx == testCases.Count - 1)
                     {
                         UnityEngine.Debug.Log($"[BenchmarkManager] Postęp: {testIdx + 1}/{testCases.Count} testów ukończonych.");
                     }
-
-                    // yield aby nie zamrozić Unity
                     yield return null;
                 }
             }
@@ -321,10 +373,6 @@ namespace Pathfinding.Benchmark
         //  BENCHMARK — TRYB PROCEDURALNY (generowane mapy)
         // ─────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Benchmark na mapach proceduralnych z różnym zagęszczeniem przeszkód.
-        /// Generuje mapy z DynamicObstacleManager, testuje każdy algorytm na każdym poziomie gęstości.
-        /// </summary>
         private IEnumerator RunProceduralBenchmarkCoroutine()
         {
             List<TestCase> testCases = LoadTestCases();
@@ -332,9 +380,11 @@ namespace Pathfinding.Benchmark
 
             string resultsPath = Path.Combine(Application.dataPath, "..", outputFileName);
             var dynamicManager = new DynamicObstacleManager(randomSeed);
+            string scenarioLabel = GetScenarioLabel();
+            var activeAlgorithms = GetAlgorithmsForScenario();
 
             UnityEngine.Debug.Log($"[BenchmarkManager] Start benchmarku proceduralnego. " +
-                                  $"Rozmiar mapy: {proceduralMapSize}x{proceduralMapSize}, " +
+                                  $"Rozmiar mapy: {proceduralMapWidth}x{proceduralMapHeight}, " +
                                   $"Gęstości: [{string.Join(", ", obstacleDensityLevels.Select(d => $"{d:P0}"))}]");
 
             float tempStart = -1f;
@@ -359,24 +409,18 @@ namespace Pathfinding.Benchmark
                         Vector2Int startPos = new Vector2Int(tc.startX, tc.startY);
                         Vector2Int targetPos = new Vector2Int(tc.targetX, tc.targetY);
 
-                        // Ogranicz start/target do rozmiaru mapy proceduralnej
-                        startPos = ClampToMap(startPos, proceduralMapSize);
-                        targetPos = ClampToMap(targetPos, proceduralMapSize);
+                        startPos = ClampToMap(startPos, proceduralMapWidth, proceduralMapHeight);
+                        targetPos = ClampToMap(targetPos, proceduralMapWidth, proceduralMapHeight);
 
-                        // Generuj mapę proceduralną
                         GridMap proceduralGrid = dynamicManager.GenerateMap(
-                            proceduralMapSize, proceduralMapSize, density, startPos, targetPos
+                            proceduralMapWidth, proceduralMapHeight, density, startPos, targetPos
                         );
 
-                        string scenarioLabel = scenario == ScenarioType.Dynamic
-                            ? "Dynamic" : "Static";
+                        ShuffleList(activeAlgorithms);
 
-                        // Randomizacja kolejności algorytmów per test case
-                        ShuffleList(_algorithms);
-
-                        foreach (var algorithm in _algorithms)
+                        foreach (var algorithm in activeAlgorithms)
                         {
-                            GridMap testGrid = (scenario == ScenarioType.Dynamic)
+                            GridMap testGrid = (scenario != DynamicScenario.Static)
                                 ? proceduralGrid.Clone()
                                 : proceduralGrid;
 
@@ -386,8 +430,6 @@ namespace Pathfinding.Benchmark
                             );
 
                             writer.WriteLine(metrics.ToCsvRow());
-
-                            // yield po każdym algorytmie
                             yield return null;
                         }
 
@@ -423,8 +465,9 @@ namespace Pathfinding.Benchmark
         /// 2. Iteracje 1..N-1 = Warm iterations — podstawa statystyk
         /// 3. Kolejność algorytmów randomizowana (Fisher-Yates) poziom wyżej
         /// 4. GC.Collect() wywoływany TYLKO RAZ przed cold start (iteracja 0)
-        ///    Warm iterations używają lekkiego GC.GetTotalMemory(false) — O(1), nieblokujące
-        /// 5. W trybie Dynamic: modyfikacje przeszkód między iteracjami
+        /// 5. W trybie DS1: toggle ścian między iteracjami
+        /// 6. W trybie DS2: ruchome przeszkody krok po kroku
+        /// 7. W trybie DS3: dynamiczna zmiana wag terenu
         /// 
         /// Złożoność: O(testIterations × złożoność algorytmu)
         /// </summary>
@@ -435,17 +478,29 @@ namespace Pathfinding.Benchmark
         {
             var allResults = new List<Pathfinding.Core.PathfindingResult>(testIterations);
 
-            DynamicObstacleManager dynamicMgr = null;
-            if (scenario == ScenarioType.Dynamic)
+            // Inicjalizacja managerów dynamicznych per algorytm-test
+            DynamicObstacleManager ds1Mgr = null;
+            MovingObstacleManager ds2Mgr = null;
+            WeightedTerrainManager ds3Mgr = null;
+
+            switch (scenario)
             {
-                dynamicMgr = new DynamicObstacleManager(randomSeed + testId);
+                case DynamicScenario.DS1_WallToggle:
+                    ds1Mgr = new DynamicObstacleManager(randomSeed + testId);
+                    break;
+                case DynamicScenario.DS2_MovingObstacles:
+                    ds2Mgr = new MovingObstacleManager(randomSeed + testId);
+                    ds2Mgr.GenerateObstacles(grid, movingObstacleCount, startPos, targetPos, patrolLength);
+                    break;
+                case DynamicScenario.DS3_WeightedTerrain:
+                    ds3Mgr = new WeightedTerrainManager(randomSeed + testId);
+                    ds3Mgr.InitializeWeights(grid, weightChangePattern, initialWeightCoverage);
+                    break;
             }
 
             for (int iter = 0; iter < testIterations; iter++)
             {
-                // GC.Collect() TYLKO przed cold start (iteracja 0) — pełna izolacja alokacji.
-                // W warm iterations używamy lekkiego GC.GetTotalMemory(false) bez wymuszania kolekcji.
-                // To eliminuje zamrożenia Unity — ForceGC trwa ~50-200ms per wywołanie!
+                // GC.Collect() TYLKO przed cold start (iteracja 0)
                 long gcBefore;
                 if (iter == 0)
                 {
@@ -459,7 +514,7 @@ namespace Pathfinding.Benchmark
                 // Uruchom algorytm z pomiarem
                 Pathfinding.Core.PathfindingResult result = algorithm.FindPath(grid, startPos, targetPos);
 
-                // Pomiar GC po zakończeniu (lekki, nieblokujący)
+                // Pomiar GC po zakończeniu
                 long gcAfter = GC.GetTotalMemory(false);
                 result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
 
@@ -471,10 +526,23 @@ namespace Pathfinding.Benchmark
 
                 allResults.Add(result);
 
-                // W trybie dynamicznym: modyfikuj przeszkody między iteracjami
-                if (dynamicMgr != null && iter < testIterations - 1)
+                // Modyfikacje dynamiczne między iteracjami
+                if (iter < testIterations - 1)
                 {
-                    dynamicMgr.ApplyDynamicChanges(grid, dynamicChangesPerIteration, startPos, targetPos);
+                    switch (scenario)
+                    {
+                        case DynamicScenario.DS1_WallToggle:
+                            ds1Mgr.ApplyDynamicChanges(grid, dynamicChangesPerIteration, startPos, targetPos);
+                            break;
+                        case DynamicScenario.DS2_MovingObstacles:
+                            ds2Mgr.StepAll(grid);
+                            ds2Mgr.VerifyObstaclePositions(grid);
+                            break;
+                        case DynamicScenario.DS3_WeightedTerrain:
+                            ds3Mgr.ApplyDynamicWeightChanges(grid, weightChangePattern,
+                                weightChangesPerStep, startPos, targetPos);
+                            break;
+                    }
                 }
             }
 
@@ -499,21 +567,17 @@ namespace Pathfinding.Benchmark
         //  NARZĘDZIA
         // ─────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Ogranicza współrzędne do rozmiaru mapy (z marginesem 1 od krawędzi).
-        /// </summary>
-        private Vector2Int ClampToMap(Vector2Int pos, int mapSize)
+        private Vector2Int ClampToMap(Vector2Int pos, int mapWidth, int mapHeight)
         {
             return new Vector2Int(
-                Mathf.Clamp(pos.x, 1, mapSize - 2),
-                Mathf.Clamp(pos.y, 1, mapSize - 2)
+                Mathf.Clamp(pos.x, 1, mapWidth - 2),
+                Mathf.Clamp(pos.y, 1, mapHeight - 2)
             );
         }
 
         /// <summary>
         /// Fisher-Yates shuffle — losowa permutacja listy in-place.
         /// Złożoność: O(n).
-        /// Używana do randomizacji kolejności algorytmów w celu eliminacji thermal throttling bias.
         /// </summary>
         private void ShuffleList<T>(List<T> list)
         {

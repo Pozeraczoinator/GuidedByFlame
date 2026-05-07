@@ -8232,15 +8232,27 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   benchmarkMode: 1
-  scenario: 1
+  scenario: 4
   dynamicChangesCount: 5
   randomSeed: 42
   selectedAlgorithm: 0
-  mapFileName: Map.txt
+  mapFileName: Map3.txt
   testCasesFileName: TestCases.csv
-  benchmarkIterations: 30
+  benchmarkIterations: 1
   outputFileName: benchmark_results.csv
   monitorCPUTemperature: 1
+  mapSource: 2
+  proceduralDensity: 0.115
+  useDistanceBucketing: 1
+  pairsPerBucket: 30
+  unreachablePairs: 5
+  movingObstacleCount: 20
+  patrolLength: 6
+  weightChangePattern: 0
+  weightChangesPerStep: 10
+  initialWeightCoverage: 0.1
+  runBatchGeneration: 0
+  batchOutputDirectory: GeneratedMaps
   basemapPrefab: {fileID: 2100204110}
   obstacleSprite: {fileID: -4230093510434319874, guid: 00a1e45588a4e8a4cb67733f5dbbcfce, type: 3}
   dynamicChangeSprite: {fileID: 21300000, guid: e2ac240a3a51a5f42b989dfd45ad8ad8, type: 3}
@@ -9073,13 +9085,19 @@ MonoBehaviour:
   scenario: 0
   randomSeed: 42
   useProceduralMaps: 0
-  proceduralMapSize: 50
+  proceduralMapWidth: 32
+  proceduralMapHeight: 20
   obstacleDensityLevels:
   - 0.1
   - 0.2
   - 0.3
   - 0.4
   dynamicChangesPerIteration: 5
+  movingObstacleCount: 3
+  patrolLength: 6
+  weightChangePattern: 0
+  weightChangesPerStep: 10
+  initialWeightCoverage: 0.1
   monitorCPUTemperature: 1
 --- !u!4 &1421535665
 Transform:
