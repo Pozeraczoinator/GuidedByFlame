@@ -35,6 +35,14 @@ namespace Pathfinding.Algorithms
             {
                 // Dijkstra korzysta tylko z najmniejszego dotychczasowego kosztu dojścia (GCost)
                 int compare = GCost.CompareTo(other.GCost);
+                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
+                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
+                if (compare == 0)
+                {
+                    int posA = X * 10000 + Y;
+                    int posB = other.X * 10000 + other.Y;
+                    compare = posA.CompareTo(posB);
+                }
                 return -compare; // Zwracamy odwrotność dla MinHeap
             }
         }

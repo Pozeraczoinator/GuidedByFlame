@@ -16,6 +16,24 @@ namespace Pathfinding.Algorithms
     {
         public string AlgorithmName => "CustomGreedy";
 
+        /// <summary>
+        /// Waga heurystyki (Weighted A*). Im wyższa, tym bardziej zachłanny algorytm.
+        /// Domyślnie 50.0 — silne preferowanie węzłów bliskich celowi.
+        /// </summary>
+        private readonly float _greedyWeight;
+
+        /// <summary>
+        /// Kara dodawana do kosztu ruchu za zmianę kierunku.
+        /// Promuje gładsze ścieżki z mniejszą liczbą zakrętów.
+        /// </summary>
+        private readonly int _turnPenalty;
+
+        public CustomGreedyAlgorithm(float greedyWeight = 50.0f, int turnPenalty = 2)
+        {
+            _greedyWeight = greedyWeight;
+            _turnPenalty = turnPenalty;
+        }
+
         private class Node : IHeapItem<Node>
         {
             public int X { get; }
@@ -47,6 +65,14 @@ namespace Pathfinding.Algorithms
                 {
                     compare = HCost.CompareTo(other.HCost);
                 }
+                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
+                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
+                if (compare == 0)
+                {
+                    int posA = X * 10000 + Y;
+                    int posB = other.X * 10000 + other.Y;
+                    compare = posA.CompareTo(posB);
+                }
                 return -compare;
             }
         }
@@ -66,7 +92,7 @@ namespace Pathfinding.Algorithms
             allNodes[startPos] = startNode;
             openSet.Add(startNode);
 
-            float greedyWeight = 50.0f; // Mocny nacisk na heurystykę
+            float greedyWeight = _greedyWeight;
             
             while (openSet.Count > 0)
             {
@@ -102,7 +128,7 @@ namespace Pathfinding.Algorithms
                         Vector2Int newDir = new Vector2Int(neighbor.X - currentNode.X, neighbor.Y - currentNode.Y);
                         if (currentDir != newDir)
                         {
-                            moveCostToNeighbor += 2; // Minimalna kara za skręt
+                            moveCostToNeighbor += _turnPenalty; // Kara za skręt (konfigurowalna)
                         }
                     }
 

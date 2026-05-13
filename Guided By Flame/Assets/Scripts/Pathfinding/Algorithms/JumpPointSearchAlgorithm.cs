@@ -39,6 +39,14 @@ namespace Pathfinding.Algorithms
                 {
                     compare = HCost.CompareTo(other.HCost);
                 }
+                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
+                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
+                if (compare == 0)
+                {
+                    int posA = Pos.x * 10000 + Pos.y;
+                    int posB = other.Pos.x * 10000 + other.Pos.y;
+                    compare = posA.CompareTo(posB);
+                }
                 return -compare;
             }
         }
