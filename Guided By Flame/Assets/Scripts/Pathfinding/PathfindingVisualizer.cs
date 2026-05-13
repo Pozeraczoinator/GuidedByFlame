@@ -311,32 +311,37 @@ namespace Pathfinding.Visualization
 
                     foreach (var algorithm in algorithmsToRun)
                     {
-                        // ─── Scenariusz dynamiczny: zmodyfikuj mapę PRZED pomiarem ───
-                        List<Vector2Int> dynamicChanges = null;
-                        if (scenario == ScenarioType.DynamicAddWalls ||
-                            scenario == ScenarioType.DynamicRemoveWalls ||
-                            scenario == ScenarioType.DynamicToggle)
-                        {
-                            dynamicChanges = ApplyDynamicScenario(startPos, targetPos);
-                            RefreshBasemapColors();
-                        }
-                        else if (scenario == ScenarioType.DS2_MovingObstacles && _ds2Manager != null)
-                        {
-                            dynamicChanges = _ds2Manager.StepAll(_gridMap);
-                            // Weryfikacja: upewnij się że WSZYSTKIE przeszkody blokują swoje pola
-                            _ds2Manager.VerifyObstaclePositions(_gridMap);
-                            RefreshBasemapColors();
-                        }
-                        else if (scenario == ScenarioType.DS3_WeightedTerrain && _ds3Manager != null)
-                        {
-                            dynamicChanges = _ds3Manager.ApplyDynamicWeightChanges(
-                                _gridMap, weightChangePattern, weightChangesPerStep, startPos, targetPos);
-                        }
+                    // ─── Scenariusz dynamiczny: zmodyfikuj mapę PRZED pętlą algorytmów ───
+                    // Zapewnia to, że wszystkie algorytmy w tym teście rozwiążą DOKŁADNIE tę samą mapę!
+                    List<Vector2Int> dynamicChanges = null;
+                    if (scenario == ScenarioType.DynamicAddWalls ||
+                        scenario == ScenarioType.DynamicRemoveWalls ||
+                        scenario == ScenarioType.DynamicToggle)
+                    {
+                        dynamicChanges = ApplyDynamicScenario(startPos, targetPos);
+                        RefreshBasemapColors();
+                    }
+                    else if (scenario == ScenarioType.DS2_MovingObstacles && _ds2Manager != null)
+                    {
+                        var ds2Moves = _ds2Manager.StepAll(_gridMap);
+                        yield return StartCoroutine(AnimateDS2Obstacles(ds2Moves));
+                        // Weryfikacja: upewnij się że WSZYSTKIE przeszkody blokują swoje pola po kroku
+                        _ds2Manager.VerifyObstaclePositions(_gridMap);
+                        RefreshBasemapColors();
+                    }
+                    else if (scenario == ScenarioType.DS3_WeightedTerrain && _ds3Manager != null)
+                    {
+                        dynamicChanges = _ds3Manager.ApplyDynamicWeightChanges(
+                            _gridMap, weightChangePattern, weightChangesPerStep, startPos, targetPos);
+                        RefreshBasemapColors(); // Jeśli używasz wag terenu do kolorowania
+                    }
 
-                        float currentDensity = (scenario == ScenarioType.Static)
-                            ? mapDensity
-                            : 1f - ((float)_gridMap.CountWalkable() / (_gridMap.Width * _gridMap.Height));
+                    float currentDensity = (scenario == ScenarioType.Static)
+                        ? mapDensity
+                        : 1f - ((float)_gridMap.CountWalkable() / (_gridMap.Width * _gridMap.Height));
 
+                    foreach (var algorithm in algorithmsToRun)
+                    {
                         // ─── KROK 1: Pomiar z N iteracjami ───
                         BenchmarkMetrics metrics;
                         Pathfinding.Core.PathfindingResult visualResult;
@@ -368,20 +373,19 @@ namespace Pathfinding.Visualization
                         Debug.Log($"[Visualizer] ✓ Zapisano: {algorithm.AlgorithmName} | " +
                                   $"Ścieżka: {metrics.PathLength:F2} | " +
                                   $"Smoothness: {metrics.PathSmoothness:F4}");
-
-                        // ─── KROK 4: Cofnij zmiany dynamiczne (resetuj mapę) ───
-                        if (scenario == ScenarioType.DynamicAddWalls ||
-                            scenario == ScenarioType.DynamicRemoveWalls ||
-                            scenario == ScenarioType.DynamicToggle)
-                        {
-                            if (dynamicChanges != null && dynamicChanges.Count > 0)
-                            {
-                                RevertDynamicChanges(dynamicChanges);
-                                RefreshBasemapColors();
-                            }
-                        }
-
                         yield return new WaitForSeconds(pauseBetweenTests);
+                    }
+
+                    // ─── KROK 4: Cofnij zmiany dynamiczne (resetuj mapę) po przetestowaniu wszystkich algorytmów ───
+                    if (scenario == ScenarioType.DynamicAddWalls ||
+                        scenario == ScenarioType.DynamicRemoveWalls ||
+                        scenario == ScenarioType.DynamicToggle)
+                    {
+                        if (dynamicChanges != null && dynamicChanges.Count > 0)
+                        {
+                            RevertDynamicChanges(dynamicChanges);
+                            RefreshBasemapColors();
+                        }
                     }
 
                     // Po zakończeniu test case'a: resetuj mapę dla DS2/DS3
@@ -407,6 +411,54 @@ namespace Pathfinding.Visualization
             Debug.Log($"[Visualizer] Wyniki: {Path.GetFullPath(resultsPath)}");
             Debug.Log($"[Visualizer] ══════════════════════════════════════════");
             _isAutoRunning = false;
+        }
+
+        private IEnumerator AnimateDS2Obstacles(List<(Vector2Int oldPos, Vector2Int newPos)> moves)
+        {
+            if (moves == null || moves.Count == 0) yield break;
+
+            float duration = 0.4f; // Czas animacji przesunięcia
+            float elapsed = 0f;
+            
+            List<(GameObject obj, Vector3 startWorld, Vector3 endWorld)> animData = new List<(GameObject, Vector3, Vector3)>();
+
+            foreach (var m in moves)
+            {
+                GameObject obs = _spawnedObstacles[m.oldPos.x, m.oldPos.y];
+                if (obs != null)
+                {
+                    Vector3 startW = obs.transform.position;
+                    Vector3 endW = new Vector3(m.newPos.x, m.newPos.y, -0.1f);
+                    animData.Add((obs, startW, endW));
+
+                    // Zaktualizuj tablicę od razu, by RefreshBasemapColors nie tworzył duplikatów
+                    _spawnedObstacles[m.newPos.x, m.newPos.y] = obs;
+                    if (m.oldPos != m.newPos) // Jeśli się rzeczywiście przemieścił
+                        _spawnedObstacles[m.oldPos.x, m.oldPos.y] = null;
+                }
+            }
+
+            // Płynna interpolacja pozycji
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                // Smooth step dla ładniejszego efektu
+                t = t * t * (3f - 2f * t);
+
+                foreach (var anim in animData)
+                {
+                    anim.obj.transform.position = Vector3.Lerp(anim.startWorld, anim.endWorld, t);
+                }
+                yield return null;
+            }
+
+            // Dociągnij do końca i zaktualizuj nazwy
+            foreach (var anim in animData)
+            {
+                anim.obj.transform.position = anim.endWorld;
+                anim.obj.name = $"Obstacle_{(int)anim.endWorld.x}_{(int)anim.endWorld.y}";
+            }
         }
 
         // ─────────────────────────────────────────────────────────
