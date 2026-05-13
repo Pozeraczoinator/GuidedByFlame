@@ -429,16 +429,17 @@ namespace Pathfinding.Tests
                 }
 
                 // Test: sąsiednie pola (odległość 1)
+                // UWAGA: Używamy pól z gwarantowanego wolnego rogu (0-2, 0-2) z CreateTestMap
                 {
-                    Vector2Int start = new Vector2Int(5, 5);
-                    Vector2Int target = new Vector2Int(6, 5);
+                    Vector2Int start = new Vector2Int(1, 1);
+                    Vector2Int target = new Vector2Int(2, 1);
                     var result = algo.FindPath(map, start, target);
-                    // UWAGA: RetracePath nie dodaje startu do ścieżki (by design).
+                    // RetracePath nie dodaje startu do ścieżki (by design).
                     // Dla sąsiednich pól: Path = [target], Count = 1, PathLength = 1.0
                     bool passed = result.PathFound && result.Path.Count >= 1;
                     string failMsg = "";
                     if (!result.PathFound)
-                        failMsg = "Nie znalazł ścieżki do sąsiada";
+                        failMsg = $"Nie znalazł ścieżki {start}→{target} (oba pola powinny być walkable!)";
                     else if (result.Path.Count < 1)
                         failMsg = $"Path.Count={result.Path.Count} (oczekiwano >= 1)";
                     RecordResult($"EdgeCase_Adjacent_{algo.AlgorithmName}",

@@ -210,18 +210,31 @@ namespace Pathfinding.Algorithms
 
                 if (dx != 0 && dy != 0)
                 {
-                    // Zapobiegaj ścinaniu rogu
-                    if (grid.IsWalkable(x, y + dy)) neighbors.Add(new Vector2Int(x, y + dy));
-                    if (grid.IsWalkable(x + dx, y)) neighbors.Add(new Vector2Int(x + dx, y));
-                    if (grid.IsWalkable(x, y + dy) || grid.IsWalkable(x + dx, y))
+                    // Natural neighbors ortogonalni (zawsze dozwolone jeśli walkable)
+                    bool canMoveY = grid.IsWalkable(x, y + dy);
+                    bool canMoveX = grid.IsWalkable(x + dx, y);
+                    
+                    if (canMoveY) neighbors.Add(new Vector2Int(x, y + dy));
+                    if (canMoveX) neighbors.Add(new Vector2Int(x + dx, y));
+                    
+                    // Diagonal natural neighbor: wymaga OBU ortogonalnych walkable (no corner cutting)
+                    if (canMoveY && canMoveX)
                     {
                         if (grid.IsWalkable(x + dx, y + dy))
                             neighbors.Add(new Vector2Int(x + dx, y + dy));
                     }
-                    if (!grid.IsWalkable(x - dx, y) && grid.IsWalkable(x, y + dy))
-                        neighbors.Add(new Vector2Int(x - dx, y + dy));
-                    if (!grid.IsWalkable(x, y - dy) && grid.IsWalkable(x + dx, y))
-                        neighbors.Add(new Vector2Int(x + dx, y - dy));
+                    
+                    // Forced neighbors (diagonal): wymaga odpowiedniego ortogonalnego walkable
+                    if (!grid.IsWalkable(x - dx, y) && canMoveY)
+                    {
+                        if (grid.IsWalkable(x - dx, y + dy))
+                            neighbors.Add(new Vector2Int(x - dx, y + dy));
+                    }
+                    if (!grid.IsWalkable(x, y - dy) && canMoveX)
+                    {
+                        if (grid.IsWalkable(x + dx, y - dy))
+                            neighbors.Add(new Vector2Int(x + dx, y - dy));
+                    }
                 }
                 else
                 {
@@ -230,8 +243,13 @@ namespace Pathfinding.Algorithms
                         if (grid.IsWalkable(x, y + dy))
                         {
                             neighbors.Add(new Vector2Int(x, y + dy));
-                            if (!grid.IsWalkable(x + 1, y)) neighbors.Add(new Vector2Int(x + 1, y + dy));
-                            if (!grid.IsWalkable(x - 1, y)) neighbors.Add(new Vector2Int(x - 1, y + dy));
+                            // Forced neighbors: diagonal move is allowed because the blocked
+                            // orthogonal neighbor forces the path through current node.
+                            // Check target tile walkability before adding.
+                            if (!grid.IsWalkable(x + 1, y) && grid.IsWalkable(x + 1, y + dy))
+                                neighbors.Add(new Vector2Int(x + 1, y + dy));
+                            if (!grid.IsWalkable(x - 1, y) && grid.IsWalkable(x - 1, y + dy))
+                                neighbors.Add(new Vector2Int(x - 1, y + dy));
                         }
                     }
                     else
@@ -239,8 +257,10 @@ namespace Pathfinding.Algorithms
                         if (grid.IsWalkable(x + dx, y))
                         {
                             neighbors.Add(new Vector2Int(x + dx, y));
-                            if (!grid.IsWalkable(x, y + 1)) neighbors.Add(new Vector2Int(x + dx, y + 1));
-                            if (!grid.IsWalkable(x, y - 1)) neighbors.Add(new Vector2Int(x + dx, y - 1));
+                            if (!grid.IsWalkable(x, y + 1) && grid.IsWalkable(x + dx, y + 1))
+                                neighbors.Add(new Vector2Int(x + dx, y + 1));
+                            if (!grid.IsWalkable(x, y - 1) && grid.IsWalkable(x + dx, y - 1))
+                                neighbors.Add(new Vector2Int(x + dx, y - 1));
                         }
                     }
                 }
