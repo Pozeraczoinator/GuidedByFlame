@@ -151,6 +151,14 @@ namespace Pathfinding.Algorithms
             int dx = dir.x;
             int dy = dir.y;
 
+            // Unikaj ścinania rogów przy diagonali (musimy to sprawdzić ZANIM wywołamy kolejne Jump
+            // lub zwrócimy nextPos, inaczej algorytm 'przeskoczy' przez ścianę)
+            if (dx != 0 && dy != 0)
+            {
+                if (!grid.IsWalkable(x - dx, y) || !grid.IsWalkable(x, y - dy))
+                    return null;
+            }
+
             // Sprawdzanie dla ruchu diagonalnego
             if (dx != 0 && dy != 0)
             {
@@ -184,13 +192,6 @@ namespace Pathfinding.Algorithms
                         return nextPos;
                     }
                 }
-            }
-
-            // Unikaj ścinania rogów przy diagonali
-            if (dx != 0 && dy != 0)
-            {
-                if (!grid.IsWalkable(x - dx, y) || !grid.IsWalkable(x, y - dy))
-                    return null;
             }
 
             return Jump(nextPos, dir, targetPos, grid);
