@@ -309,8 +309,7 @@ namespace Pathfinding.Visualization
                         _ds3Manager.InitializeWeights(_gridMap, weightChangePattern, initialWeightCoverage);
                     }
 
-                    foreach (var algorithm in algorithmsToRun)
-                    {
+
                     // ─── Scenariusz dynamiczny: zmodyfikuj mapę PRZED pętlą algorytmów ───
                     // Zapewnia to, że wszystkie algorytmy w tym teście rozwiążą DOKŁADNIE tę samą mapę!
                     List<Vector2Int> dynamicChanges = null;
