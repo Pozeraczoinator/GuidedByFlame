@@ -35,6 +35,14 @@ namespace Pathfinding.Algorithms
             {
                 // GBFS kieruje się w 100% heurystyką (odległością w prostej linii bez uwzględniania przeszkód w locie)
                 int compare = HCost.CompareTo(other.HCost);
+                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
+                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
+                if (compare == 0)
+                {
+                    int posA = X * 10000 + Y;
+                    int posB = other.X * 10000 + other.Y;
+                    compare = posA.CompareTo(posB);
+                }
                 return -compare; // MinHeap
             }
         }

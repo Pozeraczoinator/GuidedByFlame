@@ -147,7 +147,8 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      flameicon_0: 8915136428500368822
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

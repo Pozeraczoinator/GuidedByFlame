@@ -147,7 +147,8 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      ChestOpened_0: -7062246228901464722
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

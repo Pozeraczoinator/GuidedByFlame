@@ -144,21 +144,22 @@ namespace Pathfinding.Benchmark
 
         /// <summary>
         /// Przesuwa wszystkie przeszkody o jeden krok.
-        /// Zwraca listę aktualnych pozycji (do wizualizacji).
+        /// Zwraca listę par (staraPozycja, nowaPozycja) do płynnej wizualizacji.
         /// </summary>
-        public List<Vector2Int> StepAll(GridMap grid)
+        public List<(Vector2Int oldPos, Vector2Int newPos)> StepAll(GridMap grid)
         {
-            var newPositions = new List<Vector2Int>(_obstacles.Count);
+            var moves = new List<(Vector2Int oldPos, Vector2Int newPos)>(_obstacles.Count);
             foreach (var obs in _obstacles)
             {
+                Vector2Int oldPos = obs.CurrentPosition;
                 obs.Step(grid);
-                newPositions.Add(obs.CurrentPosition);
+                moves.Add((oldPos, obs.CurrentPosition));
             }
 
             // Weryfikacja po kroku
             VerifyObstaclePositions(grid);
 
-            return newPositions;
+            return moves;
         }
 
         /// <summary>

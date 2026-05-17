@@ -41,6 +41,14 @@ namespace Pathfinding.Algorithms
                 {
                     compare = HCost.CompareTo(other.HCost);
                 }
+                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
+                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
+                if (compare == 0)
+                {
+                    int posA = X * 10000 + Y;
+                    int posB = other.X * 10000 + other.Y;
+                    compare = posA.CompareTo(posB);
+                }
                 return -compare; // MinHeap requires highest priority to return 1 (zwracamy -1 dla mniejszego kosztu)
             }
         }
@@ -169,7 +177,7 @@ namespace Pathfinding.Algorithms
                         Vector2Int pos = new Vector2Int(checkX, checkY);
                         if (!allNodes.TryGetValue(pos, out Node neighborNode))
                         {
-                            neighborNode = new Node(checkX, checkY);
+                            neighborNode = new Node(checkX, checkY) { GCost = int.MaxValue };
                             allNodes[pos] = neighborNode;
                         }
                         neighbors.Add(neighborNode);

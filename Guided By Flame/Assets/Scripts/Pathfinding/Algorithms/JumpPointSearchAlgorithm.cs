@@ -39,6 +39,14 @@ namespace Pathfinding.Algorithms
                 {
                     compare = HCost.CompareTo(other.HCost);
                 }
+                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
+                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
+                if (compare == 0)
+                {
+                    int posA = Pos.x * 10000 + Pos.y;
+                    int posB = other.Pos.x * 10000 + other.Pos.y;
+                    compare = posA.CompareTo(posB);
+                }
                 return -compare;
             }
         }
@@ -264,39 +272,49 @@ namespace Pathfinding.Algorithms
 
         private void RetracePath(Node startNode, Node endNode, Pathfinding.Core.PathfindingResult result)
         {
-            List<Vector2Int> path = new List<Vector2Int>();
+            List<Vector2Int> jumpPoints = new List<Vector2Int>();
             Node currentNode = endNode;
 
             while (currentNode != startNode)
             {
-                path.Add(currentNode.Pos);
+                jumpPoints.Add(currentNode.Pos);
                 currentNode = currentNode.Parent;
             }
             
-            path.Reverse();
+            jumpPoints.Reverse();
             
-            // JPS zwraca tzw. jump points. Musimy zrekonstruować pełną trasę co kafel.
+            // JPS zwraca jump points — rekonstruujemy pełną ścieżkę krok po kroku.
+            // Między dwoma jump points poruszamy się: najpierw diagonalnie (min(dx,dy) kroków),
+            // potem ortogonalnie (|dx-dy| kroków). To odpowiada formule GetDistance (14*diag + 10*orth).
             List<Vector2Int> fullPath = new List<Vector2Int>();
             Vector2Int current = startNode.Pos;
             
             float length = 0;
 
-            foreach (var point in path)
+            foreach (var point in jumpPoints)
             {
-                Vector2Int dir = new Vector2Int(
-                    Math.Sign(point.x - current.x),
-                    Math.Sign(point.y - current.y)
-                );
-
+                // Interpoluj pełną ścieżkę od current do point
                 while (current != point)
                 {
-                    current += dir;
-                    fullPath.Add(current);
-                    
-                    if (dir.x != 0 && dir.y != 0)
+                    int dx = point.x - current.x;
+                    int dy = point.y - current.y;
+                    int stepX = Math.Sign(dx);
+                    int stepY = Math.Sign(dy);
+
+                    // Jeśli możemy iść diagonalnie (oba kierunki niezerowe) — idź diagonalnie
+                    // Jeśli tylko jeden kierunek — idź ortogonalnie
+                    if (stepX != 0 && stepY != 0)
+                    {
+                        current = new Vector2Int(current.x + stepX, current.y + stepY);
                         length += 1.414f;
+                    }
                     else
+                    {
+                        current = new Vector2Int(current.x + stepX, current.y + stepY);
                         length += 1.0f;
+                    }
+                    
+                    fullPath.Add(current);
                 }
             }
 
