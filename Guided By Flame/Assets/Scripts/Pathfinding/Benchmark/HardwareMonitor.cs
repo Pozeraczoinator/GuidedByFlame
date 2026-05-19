@@ -1,5 +1,7 @@
 using System;
 using UnityEngine;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Pathfinding.Benchmark
 {
@@ -20,6 +22,60 @@ namespace Pathfinding.Benchmark
         private static bool _isAvailable = true;
         private static bool _checkedAvailability = false;
 
+        private static float _cachedTemperature = -1f;
+        private static bool _isAsyncMonitoring = false;
+        private static CancellationTokenSource _monitoringCts;
+
+        /// <summary>
+        /// Uruchamia asynchroniczne śledzenie temperatury w tle (aktualizacja co 5 sekund).
+        /// Zapobiega blokowaniu wątku głównego Unity przy częstym sprawdzaniu w benchmarku.
+        /// </summary>
+        public static void StartTemperatureMonitoring()
+        {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            if (_isAsyncMonitoring) return;
+            _isAsyncMonitoring = true;
+            _monitoringCts = new CancellationTokenSource();
+
+            // Szybki pierwszy odczyt
+            _cachedTemperature = GetCPUTemperatureWMI();
+
+            Task.Run(async () =>
+            {
+                while (!_monitoringCts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(5000, _monitoringCts.Token);
+                        if (!_monitoringCts.Token.IsCancellationRequested)
+                        {
+                            _cachedTemperature = GetCPUTemperatureWMI();
+                        }
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break; // Normalne zakończenie
+                    }
+                }
+            }, _monitoringCts.Token);
+#endif
+        }
+
+        /// <summary>
+        /// Zatrzymuje asynchroniczne śledzenie temperatury.
+        /// </summary>
+        public static void StopTemperatureMonitoring()
+        {
+            if (!_isAsyncMonitoring) return;
+            _isAsyncMonitoring = false;
+            if (_monitoringCts != null)
+            {
+                _monitoringCts.Cancel();
+                _monitoringCts.Dispose();
+                _monitoringCts = null;
+            }
+        }
+
         /// <summary>
         /// Próbuje odczytać temperaturę CPU w stopniach Celsjusza.
         /// Zwraca -1 jeśli odczyt niemożliwy (brak WMI, inna platforma, brak uprawnień).
@@ -39,6 +95,10 @@ namespace Pathfinding.Benchmark
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
             try
             {
+                if (_isAsyncMonitoring)
+                {
+                    return _cachedTemperature;
+                }
                 return GetCPUTemperatureWMI();
             }
             catch (Exception ex)
