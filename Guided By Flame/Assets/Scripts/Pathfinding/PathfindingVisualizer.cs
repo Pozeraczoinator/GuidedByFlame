@@ -406,6 +406,7 @@ namespace Pathfinding.Visualization
             float tempStart = -1f;
             if (monitorCPUTemperature)
             {
+                                HardwareMonitor.StartTemperatureMonitoring();
                 tempStart = HardwareMonitor.GetCPUTemperature();
                 Debug.Log($"[HardwareMonitor] Temp. CPU na starcie: {tempStart:F1}°C");
             }
@@ -569,6 +570,7 @@ namespace Pathfinding.Visualization
             // Monitoring temperatury — koniec
             if (monitorCPUTemperature)
             {
+                                HardwareMonitor.StopTemperatureMonitoring();
                 float tempEnd = HardwareMonitor.GetCPUTemperature();
                 Debug.Log($"[HardwareMonitor] Temp. CPU na końcu: {tempEnd:F1}°C " +
                           $"(delta: {tempEnd - tempStart:F1}°C)");
@@ -603,6 +605,7 @@ namespace Pathfinding.Visualization
             float tempStart = -1f;
             if (monitorCPUTemperature)
             {
+                                HardwareMonitor.StartTemperatureMonitoring();
                 tempStart = HardwareMonitor.GetCPUTemperature();
                 Debug.Log($"[HardwareMonitor] Temp. CPU na starcie: {tempStart:F1}°C");
             }
@@ -668,6 +671,7 @@ namespace Pathfinding.Visualization
 
             if (monitorCPUTemperature)
             {
+                                HardwareMonitor.StopTemperatureMonitoring();
                 float tempEnd = HardwareMonitor.GetCPUTemperature();
                 Debug.Log($"[HardwareMonitor] Temp. CPU na końcu: {tempEnd:F1}°C (delta: {tempEnd - tempStart:F1}°C)");
             }
@@ -1211,7 +1215,7 @@ namespace Pathfinding.Visualization
         {
             var allResults = new List<Pathfinding.Core.PathfindingResult>(benchmarkIterations);
             bool previousHistoryRecording = PathfindingRuntimeOptions.RecordExploredNodesHistory;
-            int batchSize = Mathf.Max(1, headlessIterationsPerYield);
+            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
 
             try
             {
@@ -1241,8 +1245,11 @@ namespace Pathfinding.Visualization
 
                     allResults.Add(result);
 
-                    if ((iter + 1) % batchSize == 0 && iter + 1 < benchmarkIterations)
+                    if (sw.ElapsedMilliseconds > 16 && iter + 1 < benchmarkIterations)
+                    {
                         yield return null;
+                        sw.Restart();
+                    }
                 }
             }
             finally
@@ -1473,6 +1480,13 @@ namespace Pathfinding.Visualization
                 _agentObject = Instantiate(agentPrefab, Vector3.zero, Quaternion.identity);
                 _agentObject.name = "PathfindingAgent";
                 _agentObject.SetActive(false);
+            }
+
+            if (Camera.main != null)
+            {
+                CameraController camController = Camera.main.gameObject.GetComponent<CameraController>();
+                if (camController == null) camController = Camera.main.gameObject.AddComponent<CameraController>();
+                camController.AutoSizeToMap(_gridMap.Width, _gridMap.Height);
             }
         }
 
