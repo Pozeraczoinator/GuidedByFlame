@@ -108,6 +108,9 @@ namespace Pathfinding.Visualization
         [Range(1, 10000)]
         public int headlessRowsPerFlush = 250;
 
+        [Tooltip("Wymusza pelne GC przed cold startem kazdego algorytmu. Dokladniejsze GCAlloc, ale bardzo wolne w duzych full suite.")]
+        public bool forceGcBeforeColdStart = false;
+
         [Tooltip("Klawisz proszący benchmark o zatrzymanie po najbliższej bezpiecznej porcji pracy.")]
         public KeyCode stopBenchmarkKey = KeyCode.Escape;
 
@@ -303,6 +306,7 @@ namespace Pathfinding.Visualization
         private void Start()
         {
             _shuffleRng = new System.Random(randomSeed);
+            ConfigureHeadlessRuntime();
 
             // Tryb batch generation — generuj mapy i wyjdź
             if (runBatchGeneration)
@@ -369,6 +373,16 @@ namespace Pathfinding.Visualization
                 _isAutoRunning = true;
                 StartCoroutine(AutoRunAllCases());
             }
+        }
+
+        private void ConfigureHeadlessRuntime()
+        {
+            if (!runWithoutVisualization && !runFullBenchmarkSuite)
+                return;
+
+            Application.runInBackground = true;
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = -1;
         }
 
         private void Update()
@@ -479,15 +493,8 @@ namespace Pathfinding.Visualization
                         }
                         else
                         {
-                            MeasurementBatch measurement = new MeasurementBatch();
-                            yield return StartCoroutine(MeasureAlgorithmBatched(
-                                algorithm, _gridMap, startPos, targetPos, testId, currentDensity, measurement));
-
-                            if (measurement.Cancelled)
-                                break;
-
-                            metrics = measurement.Metrics;
-                            visualResult = measurement.VisualResult;
+                            MeasureAlgorithm(algorithm, _gridMap, startPos, targetPos,
+                                testId, currentDensity, out metrics, out visualResult);
                         }
 
                         if (monitorCPUTemperature)
@@ -741,14 +748,9 @@ namespace Pathfinding.Visualization
                             yield break;
 
                         GridMap algorithmGrid = scenarioSnapshot;
-                        MeasurementBatch measurement = new MeasurementBatch();
-                        yield return StartCoroutine(MeasureAlgorithmBatched(
-                            algorithm, algorithmGrid, startPos, targetPos, _suiteTestId, currentDensity, measurement));
-
-                        if (measurement.Cancelled)
-                            yield break;
-
-                        BenchmarkMetrics metrics = measurement.Metrics;
+                        Pathfinding.Core.PathfindingResult ignoredVisualResult;
+                        MeasureAlgorithm(algorithm, algorithmGrid, startPos, targetPos,
+                            _suiteTestId, currentDensity, out BenchmarkMetrics metrics, out ignoredVisualResult);
 
                         if (monitorCPUTemperature)
                             metrics.CPUTemperature = HardwareMonitor.GetCPUTemperature();
@@ -1155,7 +1157,7 @@ namespace Pathfinding.Visualization
 
                     // GC.Collect() TYLKO przed cold start — nie blokuj silnika w warm iterations
                     long gcBefore;
-                    if (iter == 0)
+                    if (iter == 0 && forceGcBeforeColdStart)
                         gcBefore = HardwareMonitor.ForceGCAndGetMemory();
                     else
                         gcBefore = GC.GetTotalMemory(false);
@@ -1230,7 +1232,7 @@ namespace Pathfinding.Visualization
                     PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
 
                     long gcBefore;
-                    if (iter == 0)
+                    if (iter == 0 && forceGcBeforeColdStart)
                         gcBefore = HardwareMonitor.ForceGCAndGetMemory();
                     else
                         gcBefore = GC.GetTotalMemory(false);
