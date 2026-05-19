@@ -20,7 +20,7 @@ namespace Pathfinding.Visualization
     ///   ✓ Cold Start jako osobna metryka (iteracja 0 → ColdStartTimeMs)
     ///   ✓ Pomiar GC Alloc, CPU Ticks, PathSmoothness
     ///   ✓ Monitoring temperatury CPU (opcjonalny, Windows)
-    ///   ✓ Static + DS2 Moving Obstacles + DS3 Weighted Terrain
+    ///   ✓ Static + dynamic obstacle scenarios
     ///   ✓ Zapis do CSV PO ZAKOŃCZENIU animacji (1 wynik = 1 animacja)
     ///
     /// FLOW per test case:
@@ -41,18 +41,16 @@ namespace Pathfinding.Visualization
         /// <summary>
         /// Scenariusze testowe do pracy magisterskiej:
         /// - Static: stała mapa, brak zmian
-        /// - DS2_MovingObstacles: ruchome przeszkody, wspólny deterministyczny snapshot dla algorytmów
-        /// - DS3_WeightedTerrain: dynamiczne wagi terenu, wspólny deterministyczny snapshot dla algorytmów
-        /// - DS4_PathObstruction: dodawanie/usuwanie przeszkód na bazowej trasie NPC
-        /// - DS5_DoorGateToggle: deterministyczne bramy otwierane/zamykane na korytarzach trasy
+        /// - DS1_MovingObstacles: ruchome przeszkody, wspólny deterministyczny snapshot dla algorytmów
+        /// - DS2_PathObstruction: dodawanie/usuwanie przeszkód na bazowej trasie NPC
+        /// - DS3_DoorGateToggle: deterministyczne bramy otwierane/zamykane na korytarzach trasy
         /// </summary>
         public enum ScenarioType
         {
             Static = 0,
-            DS2_MovingObstacles = 4,
-            DS3_WeightedTerrain = 5,
-            DS4_PathObstruction = 6,
-            DS5_DoorGateToggle = 7
+            DS1_MovingObstacles = 1,
+            DS2_PathObstruction = 2,
+            DS3_DoorGateToggle = 3
         }
 
         public enum MapTopology { FromFile, OpenField, Maze, RoomCorridor, ScatteredBlock }
@@ -75,7 +73,7 @@ namespace Pathfinding.Visualization
         public bool runFullBenchmarkSuite = false;
 
         [Header("═══ Scenariusz Testowy ═══")]
-        [Tooltip("Static / DS2_MovingObstacles / DS3_WeightedTerrain / DS4_PathObstruction / DS5_DoorGateToggle")]
+        [Tooltip("Static / DS1_MovingObstacles / DS2_PathObstruction / DS3_DoorGateToggle")]
         public ScenarioType scenario = ScenarioType.Static;
 
         [Tooltip("Seed RNG — ten sam seed = te same wyniki. Kluczowe dla powtarzalności.")]
@@ -157,7 +155,7 @@ namespace Pathfinding.Visualization
         [Range(0, 20)]
         public int unreachablePairs = 5;
 
-        [Header("═══ DS2: Ruchome Przeszkody ═══")]
+        [Header("═══ DS1: Ruchome Przeszkody ═══")]
         [Tooltip("Liczba ruchomych przeszkód na mapie (patrol guards).")]
         [Range(1, 20)]
         public int movingObstacleCount = 3;
@@ -166,19 +164,7 @@ namespace Pathfinding.Visualization
         [Range(3, 20)]
         public int patrolLength = 6;
 
-        [Header("═══ DS3: Dynamiczne Wagi Terenu ═══")]
-        [Tooltip("Wzorzec zmiany wag: Random / Radial (ogień) / Linear (fala).")]
-        public WeightedTerrainManager.ChangePattern weightChangePattern = WeightedTerrainManager.ChangePattern.Random;
-
-        [Tooltip("Ile pól zmienia wagę co krok.")]
-        [Range(1, 50)]
-        public int weightChangesPerStep = 10;
-
-        [Tooltip("Początkowe pokrycie pól z niedomyślnym kosztem (0.0–0.5).")]
-        [Range(0f, 0.5f)]
-        public float initialWeightCoverage = 0.1f;
-
-        [Header("═══ DS4: Blokady na Trasie ═══")]
+        [Header("═══ DS2: Blokady na Trasie ═══")]
         [Tooltip("Ile pól na bazowej trasie zmodyfikować przez dodanie/usunięcie przeszkód.")]
         [Range(1, 30)]
         public int pathObstructionChanges = 6;
@@ -187,7 +173,7 @@ namespace Pathfinding.Visualization
         [Range(2, 12)]
         public int pathObstructionSpacing = 4;
 
-        [Header("═══ DS5: Bramy / Drzwi ═══")]
+        [Header("═══ DS3: Bramy / Drzwi ═══")]
         [Tooltip("Liczba deterministycznych bram ustawianych na bazowej trasie.")]
         [Range(1, 12)]
         public int gateToggleCount = 4;
@@ -209,9 +195,9 @@ namespace Pathfinding.Visualization
         [Tooltip("Sprite dla ściany/przeszkody")]
         public Sprite obstacleSprite;
         [FormerlySerializedAs("dynamicChangeSprite")]
-        [Tooltip("Sprite dla pól zmienionych w DS3 albo markerów rekalkulacji.")]
+        [Tooltip("Sprite dla markerów zmian scenariusza i rekalkulacji.")]
         public Sprite changeMarkerSprite;
-        [Tooltip("Sprite tylko dla ruchomych przeszkód DS2. Gdy puste, używany jest zwykły Obstacle Sprite.")]
+        [Tooltip("Sprite tylko dla ruchomych przeszkód DS1. Gdy puste, używany jest zwykły Obstacle Sprite.")]
         public Sprite movingObstacleSprite;
         [Tooltip("Prefabrykat poruszającego się agenta (kostki)")]
         public GameObject agentPrefab;
@@ -219,7 +205,7 @@ namespace Pathfinding.Visualization
         public float agentMoveSpeed = 10.0f;
         [Tooltip("Pauza w sekundach między kolejnymi algorytmami/testami.")]
         public float pauseBetweenTests = 2.0f;
-        [Tooltip("Pauza wizualna w DS2 w momencie wymuszonej rekalkulacji.")]
+        [Tooltip("Pauza wizualna w DS1 w momencie wymuszonej rekalkulacji.")]
         public float replanPauseDuration = 0.35f;
 
         [Header("═══ Kolory ═══")]
@@ -255,9 +241,8 @@ namespace Pathfinding.Visualization
         private bool _stopBenchmarkRequested = false;
         private int _rowsSinceFlush = 0;
 
-        // DS2/DS3 managery
-        private MovingObstacleManager _ds2Manager;
-        private WeightedTerrainManager _ds3Manager;
+        // Dynamic scenario managers
+        private MovingObstacleManager _ds1Manager;
 
         private struct TestCase
         {
@@ -278,11 +263,11 @@ namespace Pathfinding.Visualization
 
         private bool IsMovingObstacleCell(int x, int y)
         {
-            if (_ds2Manager == null)
+            if (_ds1Manager == null)
                 return false;
 
             Vector2Int pos = new Vector2Int(x, y);
-            foreach (var obstacle in _ds2Manager.Obstacles)
+            foreach (var obstacle in _ds1Manager.Obstacles)
             {
                 if (obstacle.CurrentPosition == pos)
                     return true;
@@ -293,7 +278,7 @@ namespace Pathfinding.Visualization
 
         private Sprite GetObstacleSpriteForCell(int x, int y)
         {
-            if (movingObstacleSprite != null && scenario == ScenarioType.DS2_MovingObstacles && IsMovingObstacleCell(x, y))
+            if (movingObstacleSprite != null && scenario == ScenarioType.DS1_MovingObstacles && IsMovingObstacleCell(x, y))
                 return movingObstacleSprite;
 
             return obstacleSprite;
@@ -514,9 +499,9 @@ namespace Pathfinding.Visualization
                         if (ShouldVisualize)
                         {
                             // ─── KROK 2: Animacja wizualizacji ───
-                            if (scenario == ScenarioType.DS2_MovingObstacles)
+                            if (scenario == ScenarioType.DS1_MovingObstacles)
                             {
-                                StartCoroutine(VisualizeDS2ReplanningRoutine(
+                                StartCoroutine(VisualizeDS1ReplanningRoutine(
                                     algorithm, visualResult, startPos, targetPos, testId));
                             }
                             else
@@ -560,11 +545,10 @@ namespace Pathfinding.Visualization
                         yield return null;
                     }
 
-                    // Reset mapy po zakonczeniu test case DS2/DS3.
-                    if (scenario == ScenarioType.DS2_MovingObstacles ||
-                        scenario == ScenarioType.DS3_WeightedTerrain ||
-                        scenario == ScenarioType.DS4_PathObstruction ||
-                        scenario == ScenarioType.DS5_DoorGateToggle)
+                    // Reset mapy po zakonczeniu test case z dynamicznym scenariuszem.
+                    if (scenario == ScenarioType.DS1_MovingObstacles ||
+                        scenario == ScenarioType.DS2_PathObstruction ||
+                        scenario == ScenarioType.DS3_DoorGateToggle)
                     {
                         _gridMap = _originalGridMap.Clone();
                         if (ShouldVisualize) RefreshBasemapColors();
@@ -782,37 +766,27 @@ namespace Pathfinding.Visualization
         {
             scenarioChanges = null;
 
-            if (scenario == ScenarioType.DS2_MovingObstacles)
+            if (scenario == ScenarioType.DS1_MovingObstacles)
             {
-                _ds2Manager = CreateDS2ManagerForCurrentTest(_gridMap, startPos, targetPos, testId);
-                _ds2Manager.StepAll(_gridMap);
-                _ds2Manager.VerifyObstaclePositions(_gridMap);
+                _ds1Manager = CreateDS1ManagerForCurrentTest(_gridMap, startPos, targetPos, testId);
+                _ds1Manager.StepAll(_gridMap);
+                _ds1Manager.VerifyObstaclePositions(_gridMap);
                 return;
             }
 
-            if (scenario == ScenarioType.DS3_WeightedTerrain)
+            if (scenario == ScenarioType.DS2_PathObstruction)
             {
-                int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId;
-                _ds3Manager = new WeightedTerrainManager(seed);
-                _ds3Manager.InitializeWeights(_gridMap, weightChangePattern, initialWeightCoverage);
-                scenarioChanges = _ds3Manager.ApplyDynamicWeightChanges(_gridMap, weightChangePattern,
-                    weightChangesPerStep, startPos, targetPos);
+                scenarioChanges = ApplyDS2PathObstruction(startPos, targetPos, testId);
                 return;
             }
 
-            if (scenario == ScenarioType.DS4_PathObstruction)
+            if (scenario == ScenarioType.DS3_DoorGateToggle)
             {
-                scenarioChanges = ApplyDS4PathObstruction(startPos, targetPos, testId);
-                return;
-            }
-
-            if (scenario == ScenarioType.DS5_DoorGateToggle)
-            {
-                scenarioChanges = ApplyDS5DoorGateToggle(startPos, targetPos, testId);
+                scenarioChanges = ApplyDS3DoorGateToggle(startPos, targetPos, testId);
             }
         }
 
-        private MovingObstacleManager CreateDS2ManagerForCurrentTest(
+        private MovingObstacleManager CreateDS1ManagerForCurrentTest(
             GridMap grid, Vector2Int startPos, Vector2Int targetPos, int testId)
         {
             int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId;
@@ -821,7 +795,7 @@ namespace Pathfinding.Visualization
             return manager;
         }
 
-        private List<Vector2Int> ApplyDS4PathObstruction(Vector2Int startPos, Vector2Int targetPos, int testId)
+        private List<Vector2Int> ApplyDS2PathObstruction(Vector2Int startPos, Vector2Int targetPos, int testId)
         {
             var changes = new List<Vector2Int>();
             var baseline = new AStarAlgorithm().FindPath(_gridMap, startPos, targetPos);
@@ -857,7 +831,7 @@ namespace Pathfinding.Visualization
             return changes;
         }
 
-        private List<Vector2Int> ApplyDS5DoorGateToggle(Vector2Int startPos, Vector2Int targetPos, int testId)
+        private List<Vector2Int> ApplyDS3DoorGateToggle(Vector2Int startPos, Vector2Int targetPos, int testId)
         {
             var changes = new List<Vector2Int>();
             var baseline = new AStarAlgorithm().FindPath(_gridMap, startPos, targetPos);
@@ -940,7 +914,7 @@ namespace Pathfinding.Visualization
                    Math.Abs(pos.x - targetPos.x) <= 1 && Math.Abs(pos.y - targetPos.y) <= 1;
         }
 
-        private IEnumerator AnimateDS2Obstacles(List<(Vector2Int oldPos, Vector2Int newPos)> moves)
+        private IEnumerator AnimateDS1Obstacles(List<(Vector2Int oldPos, Vector2Int newPos)> moves)
         {
             if (moves == null || moves.Count == 0) yield break;
 
@@ -988,7 +962,7 @@ namespace Pathfinding.Visualization
             }
         }
 
-        private IEnumerator VisualizeDS2ReplanningRoutine(
+        private IEnumerator VisualizeDS1ReplanningRoutine(
             IPathfindingAlgorithm algorithm,
             Pathfinding.Core.PathfindingResult initialResult,
             Vector2Int startPos,
@@ -998,9 +972,9 @@ namespace Pathfinding.Visualization
             _isVisualizing = true;
 
             GridMap visualGrid = _originalGridMap.Clone();
-            MovingObstacleManager visualManager = CreateDS2ManagerForCurrentTest(
+            MovingObstacleManager visualManager = CreateDS1ManagerForCurrentTest(
                 visualGrid, startPos, targetPos, testId);
-            _ds2Manager = visualManager;
+            _ds1Manager = visualManager;
             visualManager.StepAll(visualGrid);
             visualManager.VerifyObstaclePositions(visualGrid);
 
@@ -1024,7 +998,7 @@ namespace Pathfinding.Visualization
 
                 if (currentResult == null || !currentResult.PathFound || currentResult.Path == null || currentResult.Path.Count < 2)
                 {
-                    Debug.LogWarning($"[Visualizer][DS2] {algorithm.AlgorithmName}: brak dalszej drogi po {replanCount} rekalkulacjach.");
+                    Debug.LogWarning($"[Visualizer][DS1] {algorithm.AlgorithmName}: brak dalszej drogi po {replanCount} rekalkulacjach.");
                     break;
                 }
 
@@ -1035,7 +1009,7 @@ namespace Pathfinding.Visualization
 
                     List<(Vector2Int oldPos, Vector2Int newPos)> moves = visualManager.StepAll(visualGrid);
                     visualManager.VerifyObstaclePositions(visualGrid);
-                    yield return StartCoroutine(AnimateDS2Obstacles(moves));
+                    yield return StartCoroutine(AnimateDS1Obstacles(moves));
 
                     _gridMap = visualGrid;
                     RefreshBasemapColors();
@@ -1051,7 +1025,7 @@ namespace Pathfinding.Visualization
                             _basemapRenderers[startPos.x, startPos.y].color = colorStart;
                             _basemapRenderers[targetPos.x, targetPos.y].color = colorTarget;
                         }
-                        Debug.Log($"[Visualizer][DS2] {algorithm.AlgorithmName}: rekalkulacja #{replanCount}, zablokowany krok {nextPos}.");
+                        Debug.Log($"[Visualizer][DS1] {algorithm.AlgorithmName}: rekalkulacja #{replanCount}, zablokowany krok {nextPos}.");
                         currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
                         replanned = true;
                         yield return new WaitForSeconds(replanPauseDuration);
@@ -1072,7 +1046,7 @@ namespace Pathfinding.Visualization
                     currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
             }
 
-            Debug.Log($"[Visualizer][DS2] {algorithm.AlgorithmName}: wizualizacja zakończona, rekalkulacje={replanCount}.");
+            Debug.Log($"[Visualizer][DS1] {algorithm.AlgorithmName}: wizualizacja zakończona, rekalkulacje={replanCount}.");
             _isVisualizing = false;
         }
 
@@ -1183,10 +1157,9 @@ namespace Pathfinding.Visualization
             string scenarioLabel = scenario switch
             {
                 ScenarioType.Static => "Static",
-                ScenarioType.DS2_MovingObstacles => "DS2_MovingObstacles",
-                ScenarioType.DS3_WeightedTerrain => "DS3_WeightedTerrain",
-                ScenarioType.DS4_PathObstruction => "DS4_PathObstruction",
-                ScenarioType.DS5_DoorGateToggle => "DS5_DoorGateToggle",
+                ScenarioType.DS1_MovingObstacles => "DS1_MovingObstacles",
+                ScenarioType.DS2_PathObstruction => "DS2_PathObstruction",
+                ScenarioType.DS3_DoorGateToggle => "DS3_DoorGateToggle",
                 _ => "Static"
             };
 
@@ -1264,10 +1237,9 @@ namespace Pathfinding.Visualization
             string scenarioLabel = scenario switch
             {
                 ScenarioType.Static => "Static",
-                ScenarioType.DS2_MovingObstacles => "DS2_MovingObstacles",
-                ScenarioType.DS3_WeightedTerrain => "DS3_WeightedTerrain",
-                ScenarioType.DS4_PathObstruction => "DS4_PathObstruction",
-                ScenarioType.DS5_DoorGateToggle => "DS5_DoorGateToggle",
+                ScenarioType.DS1_MovingObstacles => "DS1_MovingObstacles",
+                ScenarioType.DS2_PathObstruction => "DS2_PathObstruction",
+                ScenarioType.DS3_DoorGateToggle => "DS3_DoorGateToggle",
                 _ => "Static"
             };
 
@@ -1306,23 +1278,12 @@ namespace Pathfinding.Visualization
                     new CustomGreedyAlgorithm()
                 };
 
-                // JPS pomijany w DS3 — nie wspiera weighted gridów
-                if (scenario != ScenarioType.DS3_WeightedTerrain)
-                {
-                    list.Add(new JumpPointSearchAlgorithm());
-                }
+                list.Add(new JumpPointSearchAlgorithm());
 
                 return list;
             }
             else
             {
-                // W trybie SingleAlgorithm: ostrzegaj jeśli JPS + DS3
-                if (selectedAlgorithm == AlgorithmChoice.JumpPointSearch &&
-                    scenario == ScenarioType.DS3_WeightedTerrain)
-                {
-                    Debug.LogWarning("[Visualizer] JPS nie wspiera weighted gridów (DS3). Pomijam ten scenariusz dla JPS.");
-                    return new List<IPathfindingAlgorithm>();
-                }
                 return new List<IPathfindingAlgorithm> { CreateSelectedAlgorithm() };
             }
         }

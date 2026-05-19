@@ -20,7 +20,7 @@ namespace Pathfinding.Benchmark
     ///    → eliminacja thermal throttling bias
     /// 3. Pomiar GC Alloc (GC.GetTotalMemory delta)
     /// 4. Pomiar PathSmoothness (liczba zmian kierunku / długość ścieżki)
-    /// 5. Tryb statyczny, DS2 i DS3
+    /// 5. Tryb statyczny i DS1 z ruchomymi przeszkodami
     /// 6. Jeden wspólny plik CSV — łatwy import do R/Python/Excel
     /// 7. Statystyki: Avg, Min, Max, StdDev czasu wykonania
     ///
@@ -53,7 +53,7 @@ namespace Pathfinding.Benchmark
         public string outputFileName = "benchmark_results.csv";
 
         [Header("═══ Scenariusz ═══")]
-        [Tooltip("Tryb testu: Static, DS2_MovingObstacles, DS3_WeightedTerrain.")]
+        [Tooltip("Tryb testu: Static albo DS1_MovingObstacles.")]
         public DynamicScenario scenario = DynamicScenario.Static;
 
         [Tooltip("Seed RNG do generowania map proceduralnych. Ten sam seed = te same wyniki.")]
@@ -74,7 +74,7 @@ namespace Pathfinding.Benchmark
         [Tooltip("Poziomy zagęszczenia przeszkód do przetestowania (np. 0.1, 0.2, 0.3, 0.4).")]
         public float[] obstacleDensityLevels = { 0.10f, 0.20f, 0.30f, 0.40f };
 
-        [Header("═══ DS2: Moving Obstacles ═══")]
+        [Header("═══ DS1: Moving Obstacles ═══")]
         [Tooltip("Liczba ruchomych przeszkód na mapie.")]
         [Range(1, 20)]
         public int movingObstacleCount = 3;
@@ -82,18 +82,6 @@ namespace Pathfinding.Benchmark
         [Tooltip("Długość trasy patrol każdej przeszkody (w polach).")]
         [Range(3, 20)]
         public int patrolLength = 6;
-
-        [Header("═══ DS3: Weighted Terrain ═══")]
-        [Tooltip("Wzorzec zmiany wag terenu.")]
-        public WeightedTerrainManager.ChangePattern weightChangePattern = WeightedTerrainManager.ChangePattern.Random;
-
-        [Tooltip("Ile pól zmienia wagę co krok w DS3.")]
-        [Range(1, 50)]
-        public int weightChangesPerStep = 10;
-
-        [Tooltip("Początkowe pokrycie pól z niedomyślnym kosztem (0.0–0.5).")]
-        [Range(0f, 0.5f)]
-        public float initialWeightCoverage = 0.1f;
 
         [Header("═══ Monitoring Sprzętowy ═══")]
         [Tooltip("Czy zapisywać temperaturę CPU na początku i końcu benchmarku (Windows only).")]
@@ -106,8 +94,7 @@ namespace Pathfinding.Benchmark
         public enum DynamicScenario
         {
             Static = 0,
-            DS2_MovingObstacles = 2,
-            DS3_WeightedTerrain = 3
+            DS1_MovingObstacles = 1
         }
 
         private struct TestCase
@@ -121,7 +108,6 @@ namespace Pathfinding.Benchmark
         // ─────────────────────────────────────────────────────────
 
         private List<IPathfindingAlgorithm> _algorithms;
-        private List<IPathfindingAlgorithm> _algorithmsDS3; // Bez JPS
         private GridMap _gridMap;
         private System.Random _shuffleRng;
 
@@ -138,15 +124,6 @@ namespace Pathfinding.Benchmark
                 new GreedyBestFirstAlgorithm(),
                 new CustomGreedyAlgorithm(),
                 new JumpPointSearchAlgorithm()
-            };
-
-            // DS3: JPS pomijany — nie wspiera weighted gridów
-            _algorithmsDS3 = new List<IPathfindingAlgorithm>
-            {
-                new AStarAlgorithm(),
-                new DijkstraAlgorithm(),
-                new GreedyBestFirstAlgorithm(),
-                new CustomGreedyAlgorithm()
             };
 
             _shuffleRng = new System.Random(randomSeed);
@@ -266,7 +243,7 @@ namespace Pathfinding.Benchmark
 
         private List<IPathfindingAlgorithm> GetAlgorithmsForScenario()
         {
-            return scenario == DynamicScenario.DS3_WeightedTerrain ? _algorithmsDS3 : _algorithms;
+            return _algorithms;
         }
 
         private string GetScenarioLabel()
@@ -274,8 +251,7 @@ namespace Pathfinding.Benchmark
             switch (scenario)
             {
                 case DynamicScenario.Static: return "Static";
-                case DynamicScenario.DS2_MovingObstacles: return "DS2_MovingObstacles";
-                case DynamicScenario.DS3_WeightedTerrain: return "DS3_WeightedTerrain";
+                case DynamicScenario.DS1_MovingObstacles: return "DS1_MovingObstacles";
                 default: return "Unknown";
             }
         }
@@ -458,8 +434,7 @@ namespace Pathfinding.Benchmark
         /// 2. Iteracje 1..N-1 = Warm iterations — podstawa statystyk
         /// 3. Kolejność algorytmów randomizowana (Fisher-Yates) poziom wyżej
         /// 4. GC.Collect() wywoływany TYLKO RAZ przed cold start (iteracja 0)
-        /// 5. W trybie DS2: ruchome przeszkody krok po kroku
-        /// 6. W trybie DS3: dynamiczna zmiana wag terenu
+        /// 5. W trybie DS1: ruchome przeszkody krok po kroku
         /// 
         /// Złożoność: O(testIterations × złożoność algorytmu)
         /// </summary>
@@ -472,17 +447,12 @@ namespace Pathfinding.Benchmark
 
             // Inicjalizacja managerów dynamicznych per algorytm-test
             MovingObstacleManager ds2Mgr = null;
-            WeightedTerrainManager ds3Mgr = null;
 
             switch (scenario)
             {
-                case DynamicScenario.DS2_MovingObstacles:
+                case DynamicScenario.DS1_MovingObstacles:
                     ds2Mgr = new MovingObstacleManager(randomSeed + testId);
                     ds2Mgr.GenerateObstacles(grid, movingObstacleCount, startPos, targetPos, patrolLength);
-                    break;
-                case DynamicScenario.DS3_WeightedTerrain:
-                    ds3Mgr = new WeightedTerrainManager(randomSeed + testId);
-                    ds3Mgr.InitializeWeights(grid, weightChangePattern, initialWeightCoverage);
                     break;
             }
 
@@ -519,13 +489,9 @@ namespace Pathfinding.Benchmark
                 {
                     switch (scenario)
                     {
-                        case DynamicScenario.DS2_MovingObstacles:
+                        case DynamicScenario.DS1_MovingObstacles:
                             ds2Mgr.StepAll(grid);
                             ds2Mgr.VerifyObstaclePositions(grid);
-                            break;
-                        case DynamicScenario.DS3_WeightedTerrain:
-                            ds3Mgr.ApplyDynamicWeightChanges(grid, weightChangePattern,
-                                weightChangesPerStep, startPos, targetPos);
                             break;
                     }
                 }

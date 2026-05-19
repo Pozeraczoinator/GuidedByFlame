@@ -20,6 +20,7 @@ namespace Pathfinding.Visualization
         private SerializedProperty _monitorCPUTemperature;
         private SerializedProperty _headlessIterationsPerYield;
         private SerializedProperty _headlessRowsPerFlush;
+        private SerializedProperty _forceGcBeforeColdStart;
         private SerializedProperty _stopBenchmarkKey;
         private SerializedProperty _mapSource;
         private SerializedProperty _proceduralMapWidth;
@@ -35,9 +36,6 @@ namespace Pathfinding.Visualization
         private SerializedProperty _unreachablePairs;
         private SerializedProperty _movingObstacleCount;
         private SerializedProperty _patrolLength;
-        private SerializedProperty _weightChangePattern;
-        private SerializedProperty _weightChangesPerStep;
-        private SerializedProperty _initialWeightCoverage;
         private SerializedProperty _pathObstructionChanges;
         private SerializedProperty _pathObstructionSpacing;
         private SerializedProperty _gateToggleCount;
@@ -77,6 +75,7 @@ namespace Pathfinding.Visualization
             _monitorCPUTemperature = serializedObject.FindProperty("monitorCPUTemperature");
             _headlessIterationsPerYield = serializedObject.FindProperty("headlessIterationsPerYield");
             _headlessRowsPerFlush = serializedObject.FindProperty("headlessRowsPerFlush");
+            _forceGcBeforeColdStart = serializedObject.FindProperty("forceGcBeforeColdStart");
             _stopBenchmarkKey = serializedObject.FindProperty("stopBenchmarkKey");
             _mapSource = serializedObject.FindProperty("mapSource");
             _proceduralMapWidth = serializedObject.FindProperty("proceduralMapWidth");
@@ -92,9 +91,6 @@ namespace Pathfinding.Visualization
             _unreachablePairs = serializedObject.FindProperty("unreachablePairs");
             _movingObstacleCount = serializedObject.FindProperty("movingObstacleCount");
             _patrolLength = serializedObject.FindProperty("patrolLength");
-            _weightChangePattern = serializedObject.FindProperty("weightChangePattern");
-            _weightChangesPerStep = serializedObject.FindProperty("weightChangesPerStep");
-            _initialWeightCoverage = serializedObject.FindProperty("initialWeightCoverage");
             _pathObstructionChanges = serializedObject.FindProperty("pathObstructionChanges");
             _pathObstructionSpacing = serializedObject.FindProperty("pathObstructionSpacing");
             _gateToggleCount = serializedObject.FindProperty("gateToggleCount");
@@ -255,6 +251,7 @@ namespace Pathfinding.Visualization
                 EditorGUILayout.LabelField("Headless Responsiveness", EditorStyles.boldLabel);
                 EditorGUILayout.PropertyField(_headlessIterationsPerYield);
                 EditorGUILayout.PropertyField(_headlessRowsPerFlush);
+                EditorGUILayout.PropertyField(_forceGcBeforeColdStart);
                 EditorGUILayout.PropertyField(_stopBenchmarkKey);
             }
         }
@@ -264,37 +261,29 @@ namespace Pathfinding.Visualization
             bool fullSuite = _runFullBenchmarkSuite.boolValue;
             var scenario = (PathfindingVisualizer.ScenarioType)_scenario.intValue;
 
-            bool showDs2 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS2_MovingObstacles;
-            bool showDs3 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS3_WeightedTerrain;
-            bool showDs4 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS4_PathObstruction;
-            bool showDs5 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS5_DoorGateToggle;
+            bool showDs1 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS1_MovingObstacles;
+            bool showDs2 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS2_PathObstruction;
+            bool showDs3 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS3_DoorGateToggle;
 
-            if (!showDs2 && !showDs3 && !showDs4 && !showDs5)
+            if (!showDs1 && !showDs2 && !showDs3)
                 return;
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Scenario Parameters", EditorStyles.boldLabel);
 
-            if (showDs2)
+            if (showDs1)
             {
                 EditorGUILayout.PropertyField(_movingObstacleCount);
                 EditorGUILayout.PropertyField(_patrolLength);
             }
 
-            if (showDs3)
-            {
-                EditorGUILayout.PropertyField(_weightChangePattern);
-                EditorGUILayout.PropertyField(_weightChangesPerStep);
-                EditorGUILayout.PropertyField(_initialWeightCoverage);
-            }
-
-            if (showDs4)
+            if (showDs2)
             {
                 EditorGUILayout.PropertyField(_pathObstructionChanges);
                 EditorGUILayout.PropertyField(_pathObstructionSpacing);
             }
 
-            if (showDs5)
+            if (showDs3)
             {
                 EditorGUILayout.PropertyField(_gateToggleCount);
                 EditorGUILayout.PropertyField(_gateWidth);

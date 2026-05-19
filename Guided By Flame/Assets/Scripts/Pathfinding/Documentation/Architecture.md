@@ -25,7 +25,6 @@ Pathfinding/
 │
 ├── Benchmark/                     # Infrastruktura pomiarowa
 │   ├── MovingObstacleManager.cs   # DS2: patrol NPC (RandomWalk 1-3)
-│   ├── WeightedTerrainManager.cs  # DS3: dynamiczne wagi (Random/Radial/Linear)
 │   ├── TestPointSelector.cs       # Distance bucketing + BFS reachability
 │   ├── HardwareMonitor.cs         # Temp CPU (WMI), GC.Collect wrapper
 │   └── BatchGenerator.cs          # 4×4×4 = 64 mapy

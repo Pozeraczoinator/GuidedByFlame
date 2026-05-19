@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- Generated file, do not modify, your changes will be overwritten (use AssetPostprocessor.OnGeneratedCSProject) -->
   <PropertyGroup>
@@ -586,6 +586,30 @@
     </Reference>
     <Reference Include="Mono.Cecil">
       <HintPath>Library\PackageCache\com.unity.nuget.mono-cecil@d6f9955a5d5f\Mono.Cecil.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe">
+      <HintPath>Assets\Plugins\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="DiskInfoToolkit">
+      <HintPath>Assets\Plugins\DiskInfoToolkit.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="RAMSPDToolkit-NDD">
+      <HintPath>Assets\Plugins\RAMSPDToolkit-NDD.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="LibreHardwareMonitorLib">
+      <HintPath>Assets\Plugins\LibreHardwareMonitorLib.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="HidSharp">
+      <HintPath>Assets\Plugins\HidSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="BlackSharp.Core">
+      <HintPath>Assets\Plugins\BlackSharp.Core.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="mscorlib">

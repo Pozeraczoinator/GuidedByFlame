@@ -6,7 +6,7 @@ using Pathfinding.Core;
 namespace Pathfinding.Benchmark
 {
     /// <summary>
-    /// Ruchoma przeszkoda poruszająca się losowym spacerem (DS2).
+    /// Ruchoma przeszkoda poruszająca się losowym spacerem (DS1).
     /// Trasa: RandomWalk 1-3 kroków w 8 kierunkach, ping-pong.
     /// Przeszkoda zajmuje 1 pole i BLOKUJE je (SetWalkable = false).
     /// </summary>
@@ -89,7 +89,7 @@ namespace Pathfinding.Benchmark
     }
 
     /// <summary>
-    /// Manager scenariusza DS2 — ruchome przeszkody (RandomWalk 1-3 kroków).
+    /// Manager scenariusza DS1 — ruchome przeszkody (RandomWalk 1-3 kroków).
     /// 
     /// Każda przeszkoda robi losowy spacer po 8 kierunkach, 1-3 pola,
     /// a potem wraca tą samą drogą (ping-pong). Ruch deterministyczny (seed).
@@ -138,7 +138,7 @@ namespace Pathfinding.Benchmark
             // Weryfikacja: upewnij się, że wszystkie przeszkody BLOKUJĄ swoje pola
             VerifyObstaclePositions(grid);
 
-            Debug.Log($"[DS2] Wygenerowano {_obstacles.Count}/{count} ruchomych przeszkód " +
+            Debug.Log($"[DS1] Wygenerowano {_obstacles.Count}/{count} ruchomych przeszkód " +
                       $"(patrol: {patrolLength} kroków, seed: próby={attempts})");
         }
 

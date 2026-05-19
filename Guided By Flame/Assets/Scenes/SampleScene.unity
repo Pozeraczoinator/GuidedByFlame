@@ -8242,7 +8242,7 @@ MonoBehaviour:
   testCasesFileName: TestCases.csv
   benchmarkIterations: 1
   outputFileName: benchmark_results.csv
-  monitorCPUTemperature: 0
+  monitorCPUTemperature: 1
   headlessIterationsPerYield: 3
   headlessRowsPerFlush: 250
   stopBenchmarkKey: 27
@@ -8264,9 +8264,6 @@ MonoBehaviour:
   unreachablePairs: 5
   movingObstacleCount: 20
   patrolLength: 6
-  weightChangePattern: 2
-  weightChangesPerStep: 10
-  initialWeightCoverage: 0.1
   pathObstructionChanges: 6
   pathObstructionSpacing: 4
   gateToggleCount: 4
@@ -9118,9 +9115,6 @@ MonoBehaviour:
   - 0.4
   movingObstacleCount: 3
   patrolLength: 6
-  weightChangePattern: 0
-  weightChangesPerStep: 10
-  initialWeightCoverage: 0.1
   monitorCPUTemperature: 1
 --- !u!4 &1421535665
 Transform:
