@@ -19,6 +19,11 @@ namespace Pathfinding.Core
         public int StartY { get; set; }
         public int TargetX { get; set; }
         public int TargetY { get; set; }
+        public string MapTopology { get; set; } = "Unknown";
+        public int MapSeed { get; set; }
+        public float MapDensity { get; set; }
+        public int MapWidth { get; set; }
+        public int MapHeight { get; set; }
         public string Scenario { get; set; }        // "Static" lub "Dynamic"
         public float ObstacleDensity { get; set; }   // Procent przeszkód (0.0 - 1.0)
 
@@ -131,6 +136,7 @@ namespace Pathfinding.Core
         public static string GetCsvHeader()
         {
             return "TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;" +
+                   "MapTopology;MapSeed;MapDensity;MapWidth;MapHeight;" +
                    "PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;" +
                    "AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;" +
                    "AvgExecutionTicks;AvgGCAllocBytes;" +
@@ -146,6 +152,7 @@ namespace Pathfinding.Core
         {
             return $"{TestID};{AlgorithmName};{StartX};{StartY};{TargetX};{TargetY};" +
                    $"{Scenario};{ObstacleDensity:F2};" +
+                   $"{MapTopology};{MapSeed};{MapDensity:F2};{MapWidth};{MapHeight};" +
                    $"{PathFound};{ColdStartTimeMs:F6};{ColdStartTicks};{ColdStartGCAllocBytes};" +
                    $"{AvgExecutionTimeMs:F6};{MinExecutionTimeMs:F6};{MaxExecutionTimeMs:F6};{StdDevExecutionTimeMs:F6};" +
                    $"{AvgExecutionTicks:F2};{AvgGCAllocBytes:F2};" +

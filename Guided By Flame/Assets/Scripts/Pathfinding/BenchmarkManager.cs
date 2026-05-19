@@ -20,7 +20,7 @@ namespace Pathfinding.Benchmark
     ///    → eliminacja thermal throttling bias
     /// 3. Pomiar GC Alloc (GC.GetTotalMemory delta)
     /// 4. Pomiar PathSmoothness (liczba zmian kierunku / długość ścieżki)
-    /// 5. Tryb statyczny i dynamiczny (DS1/DS2/DS3, konfigurowane z Inspektora)
+    /// 5. Tryb statyczny, DS2 i DS3
     /// 6. Jeden wspólny plik CSV — łatwy import do R/Python/Excel
     /// 7. Statystyki: Avg, Min, Max, StdDev czasu wykonania
     ///
@@ -53,7 +53,7 @@ namespace Pathfinding.Benchmark
         public string outputFileName = "benchmark_results.csv";
 
         [Header("═══ Scenariusz ═══")]
-        [Tooltip("Tryb testu: Static, DS1_WallToggle, DS2_MovingObstacles, DS3_WeightedTerrain.")]
+        [Tooltip("Tryb testu: Static, DS2_MovingObstacles, DS3_WeightedTerrain.")]
         public DynamicScenario scenario = DynamicScenario.Static;
 
         [Tooltip("Seed RNG do generowania map proceduralnych. Ten sam seed = te same wyniki.")]
@@ -73,11 +73,6 @@ namespace Pathfinding.Benchmark
 
         [Tooltip("Poziomy zagęszczenia przeszkód do przetestowania (np. 0.1, 0.2, 0.3, 0.4).")]
         public float[] obstacleDensityLevels = { 0.10f, 0.20f, 0.30f, 0.40f };
-
-        [Header("═══ DS1: Wall Toggle ═══")]
-        [Tooltip("Liczba zmian przeszkód między iteracjami w trybie DS1.")]
-        [Range(1, 100)]
-        public int dynamicChangesPerIteration = 5;
 
         [Header("═══ DS2: Moving Obstacles ═══")]
         [Tooltip("Liczba ruchomych przeszkód na mapie.")]
@@ -110,10 +105,9 @@ namespace Pathfinding.Benchmark
 
         public enum DynamicScenario
         {
-            Static,
-            DS1_WallToggle,
-            DS2_MovingObstacles,
-            DS3_WeightedTerrain
+            Static = 0,
+            DS2_MovingObstacles = 2,
+            DS3_WeightedTerrain = 3
         }
 
         private struct TestCase
@@ -280,7 +274,6 @@ namespace Pathfinding.Benchmark
             switch (scenario)
             {
                 case DynamicScenario.Static: return "Static";
-                case DynamicScenario.DS1_WallToggle: return "DS1_WallToggle";
                 case DynamicScenario.DS2_MovingObstacles: return "DS2_MovingObstacles";
                 case DynamicScenario.DS3_WeightedTerrain: return "DS3_WeightedTerrain";
                 default: return "Unknown";
@@ -465,9 +458,8 @@ namespace Pathfinding.Benchmark
         /// 2. Iteracje 1..N-1 = Warm iterations — podstawa statystyk
         /// 3. Kolejność algorytmów randomizowana (Fisher-Yates) poziom wyżej
         /// 4. GC.Collect() wywoływany TYLKO RAZ przed cold start (iteracja 0)
-        /// 5. W trybie DS1: toggle ścian między iteracjami
-        /// 6. W trybie DS2: ruchome przeszkody krok po kroku
-        /// 7. W trybie DS3: dynamiczna zmiana wag terenu
+        /// 5. W trybie DS2: ruchome przeszkody krok po kroku
+        /// 6. W trybie DS3: dynamiczna zmiana wag terenu
         /// 
         /// Złożoność: O(testIterations × złożoność algorytmu)
         /// </summary>
@@ -479,15 +471,11 @@ namespace Pathfinding.Benchmark
             var allResults = new List<Pathfinding.Core.PathfindingResult>(testIterations);
 
             // Inicjalizacja managerów dynamicznych per algorytm-test
-            DynamicObstacleManager ds1Mgr = null;
             MovingObstacleManager ds2Mgr = null;
             WeightedTerrainManager ds3Mgr = null;
 
             switch (scenario)
             {
-                case DynamicScenario.DS1_WallToggle:
-                    ds1Mgr = new DynamicObstacleManager(randomSeed + testId);
-                    break;
                 case DynamicScenario.DS2_MovingObstacles:
                     ds2Mgr = new MovingObstacleManager(randomSeed + testId);
                     ds2Mgr.GenerateObstacles(grid, movingObstacleCount, startPos, targetPos, patrolLength);
@@ -531,9 +519,6 @@ namespace Pathfinding.Benchmark
                 {
                     switch (scenario)
                     {
-                        case DynamicScenario.DS1_WallToggle:
-                            ds1Mgr.ApplyDynamicChanges(grid, dynamicChangesPerIteration, startPos, targetPos);
-                            break;
                         case DynamicScenario.DS2_MovingObstacles:
                             ds2Mgr.StepAll(grid);
                             ds2Mgr.VerifyObstaclePositions(grid);
@@ -556,7 +541,12 @@ namespace Pathfinding.Benchmark
                 TargetX = targetPos.x,
                 TargetY = targetPos.y,
                 Scenario = scenarioLabel,
-                ObstacleDensity = density
+                ObstacleDensity = density,
+                MapTopology = useProceduralMaps ? "Procedural" : "FromFile",
+                MapSeed = randomSeed,
+                MapDensity = density,
+                MapWidth = grid.Width,
+                MapHeight = grid.Height
             };
 
             metrics.AggregateFrom(allResults);

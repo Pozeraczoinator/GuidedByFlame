@@ -71,7 +71,8 @@ namespace Pathfinding.Algorithms
                 Node currentNode = openSet.RemoveFirst();
                 closedSet.Add(currentNode.Pos);
                 result.ExploredNodes++;
-                result.ExploredNodesHistory.Add(currentNode.Pos);
+                if (PathfindingRuntimeOptions.RecordExploredNodesHistory)
+                    result.ExploredNodesHistory.Add(currentNode.Pos);
 
                 if (currentNode.Pos == targetPos)
                 {
@@ -143,13 +144,21 @@ namespace Pathfinding.Algorithms
             if (!grid.IsWalkable(nextPos))
                 return null;
 
-            if (nextPos == targetPos)
-                return nextPos;
-
             int x = nextPos.x;
             int y = nextPos.y;
             int dx = dir.x;
             int dy = dir.y;
+
+            // Diagonal move is legal only when both adjacent orthogonal cells are free.
+            // This prevents squeezing through a blocked 2x2 corner like: 01 / 10.
+            if (dx != 0 && dy != 0)
+            {
+                if (!grid.IsWalkable(x - dx, y) || !grid.IsWalkable(x, y - dy))
+                    return null;
+            }
+
+            if (nextPos == targetPos)
+                return nextPos;
 
             // Sprawdzanie dla ruchu diagonalnego
             if (dx != 0 && dy != 0)
@@ -170,6 +179,11 @@ namespace Pathfinding.Algorithms
             {
                 if (dx != 0) // Poziomo
                 {
+                    if (HasOrthogonalBranch(grid, x, y, true))
+                    {
+                        return nextPos;
+                    }
+
                     if ((grid.IsWalkable(x + dx, y + 1) && !grid.IsWalkable(x, y + 1)) ||
                         (grid.IsWalkable(x + dx, y - 1) && !grid.IsWalkable(x, y - 1)))
                     {
@@ -178,19 +192,17 @@ namespace Pathfinding.Algorithms
                 }
                 else // Pionowo
                 {
+                    if (HasOrthogonalBranch(grid, x, y, false))
+                    {
+                        return nextPos;
+                    }
+
                     if ((grid.IsWalkable(x + 1, y + dy) && !grid.IsWalkable(x + 1, y)) ||
                         (grid.IsWalkable(x - 1, y + dy) && !grid.IsWalkable(x - 1, y)))
                     {
                         return nextPos;
                     }
                 }
-            }
-
-            // Unikaj ścinania rogów przy diagonali
-            if (dx != 0 && dy != 0)
-            {
-                if (!grid.IsWalkable(x - dx, y) || !grid.IsWalkable(x, y - dy))
-                    return null;
             }
 
             return Jump(nextPos, dir, targetPos, grid);
@@ -213,7 +225,7 @@ namespace Pathfinding.Algorithms
                     // Zapobiegaj ścinaniu rogu
                     if (grid.IsWalkable(x, y + dy)) neighbors.Add(new Vector2Int(x, y + dy));
                     if (grid.IsWalkable(x + dx, y)) neighbors.Add(new Vector2Int(x + dx, y));
-                    if (grid.IsWalkable(x, y + dy) || grid.IsWalkable(x + dx, y))
+                    if (grid.IsWalkable(x, y + dy) && grid.IsWalkable(x + dx, y))
                     {
                         if (grid.IsWalkable(x + dx, y + dy))
                             neighbors.Add(new Vector2Int(x + dx, y + dy));
@@ -227,6 +239,9 @@ namespace Pathfinding.Algorithms
                 {
                     if (dx == 0)
                     {
+                        AddIfWalkable(neighbors, grid, x + 1, y);
+                        AddIfWalkable(neighbors, grid, x - 1, y);
+
                         if (grid.IsWalkable(x, y + dy))
                         {
                             neighbors.Add(new Vector2Int(x, y + dy));
@@ -236,6 +251,9 @@ namespace Pathfinding.Algorithms
                     }
                     else
                     {
+                        AddIfWalkable(neighbors, grid, x, y + 1);
+                        AddIfWalkable(neighbors, grid, x, y - 1);
+
                         if (grid.IsWalkable(x + dx, y))
                         {
                             neighbors.Add(new Vector2Int(x + dx, y));
@@ -268,6 +286,26 @@ namespace Pathfinding.Algorithms
                 }
             }
             return neighbors;
+        }
+
+        private bool HasOrthogonalBranch(GridMap grid, int x, int y, bool movingHorizontally)
+        {
+            if (movingHorizontally)
+            {
+                return grid.IsWalkable(x, y + 1) || grid.IsWalkable(x, y - 1);
+            }
+
+            return grid.IsWalkable(x + 1, y) || grid.IsWalkable(x - 1, y);
+        }
+
+        private void AddIfWalkable(List<Vector2Int> neighbors, GridMap grid, int x, int y)
+        {
+            if (!grid.IsWalkable(x, y))
+                return;
+
+            Vector2Int pos = new Vector2Int(x, y);
+            if (!neighbors.Contains(pos))
+                neighbors.Add(pos);
         }
 
         private void RetracePath(Node startNode, Node endNode, Pathfinding.Core.PathfindingResult result)

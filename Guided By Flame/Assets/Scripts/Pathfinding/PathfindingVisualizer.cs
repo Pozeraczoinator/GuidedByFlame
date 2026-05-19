@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Serialization;
 using Pathfinding.Core;
 using Pathfinding.Algorithms;
 using Pathfinding.Benchmark;
@@ -19,7 +20,7 @@ namespace Pathfinding.Visualization
     ///   ✓ Cold Start jako osobna metryka (iteracja 0 → ColdStartTimeMs)
     ///   ✓ Pomiar GC Alloc, CPU Ticks, PathSmoothness
     ///   ✓ Monitoring temperatury CPU (opcjonalny, Windows)
-    ///   ✓ 3 scenariusze dynamiczne + 1 statyczny
+    ///   ✓ Static + DS2 Moving Obstacles + DS3 Weighted Terrain
     ///   ✓ Zapis do CSV PO ZAKOŃCZENIU animacji (1 wynik = 1 animacja)
     ///
     /// FLOW per test case:
@@ -38,20 +39,20 @@ namespace Pathfinding.Visualization
         public enum BenchmarkMode { SingleAlgorithm, AllAlgorithms }
 
         /// <summary>
-        /// 4 scenariusze testowe:
+        /// Scenariusze testowe do pracy magisterskiej:
         /// - Static: stała mapa, brak zmian
-        /// - DynamicAddWalls: dodawanie losowych ścian między testami (wymuszanie rekalkulacji)
-        /// - DynamicRemoveWalls: usuwanie istniejących ścian (otwieranie nowych dróg)
-        /// - DynamicToggle: losowe przełączanie ścian (najbardziej chaotyczny scenariusz)
+        /// - DS2_MovingObstacles: ruchome przeszkody, wspólny deterministyczny snapshot dla algorytmów
+        /// - DS3_WeightedTerrain: dynamiczne wagi terenu, wspólny deterministyczny snapshot dla algorytmów
+        /// - DS4_PathObstruction: dodawanie/usuwanie przeszkód na bazowej trasie NPC
+        /// - DS5_DoorGateToggle: deterministyczne bramy otwierane/zamykane na korytarzach trasy
         /// </summary>
         public enum ScenarioType
         {
-            Static,
-            DynamicAddWalls,
-            DynamicRemoveWalls,
-            DynamicToggle,
-            DS2_MovingObstacles,
-            DS3_WeightedTerrain
+            Static = 0,
+            DS2_MovingObstacles = 4,
+            DS3_WeightedTerrain = 5,
+            DS4_PathObstruction = 6,
+            DS5_DoorGateToggle = 7
         }
 
         public enum MapTopology { FromFile, OpenField, Maze, RoomCorridor, ScatteredBlock }
@@ -64,13 +65,18 @@ namespace Pathfinding.Visualization
         [Tooltip("SingleAlgorithm = testuj tylko wybrany algorytm.\nAllAlgorithms = testuj wszystkie 5 po kolei (z animacją i losową kolejnością).")]
         public BenchmarkMode benchmarkMode = BenchmarkMode.AllAlgorithms;
 
-        [Header("═══ Scenariusz Testowy ═══")]
-        [Tooltip("Static / DynamicAddWalls / DynamicRemoveWalls / DynamicToggle / DS2_MovingObstacles / DS3_WeightedTerrain")]
-        public ScenarioType scenario = ScenarioType.Static;
+        [Tooltip("Startuje benchmark automatycznie po uruchomieniu sceny. Gdy wyłączone, start pod spacją.")]
+        public bool autoStartBenchmark = false;
 
-        [Tooltip("Liczba zmian przeszkód między kolejnymi algorytmami w trybie Dynamic/DS1.")]
-        [Range(1, 50)]
-        public int dynamicChangesCount = 5;
+        [Tooltip("Uruchamia pomiary bez tworzenia sprite'ów i animacji. Najlepszy tryb do zbierania danych.")]
+        public bool runWithoutVisualization = false;
+
+        [Tooltip("Uruchamia pełny zestaw: wybrane algorytmy x wszystkie scenariusze x wszystkie mapy proceduralne.")]
+        public bool runFullBenchmarkSuite = false;
+
+        [Header("═══ Scenariusz Testowy ═══")]
+        [Tooltip("Static / DS2_MovingObstacles / DS3_WeightedTerrain / DS4_PathObstruction / DS5_DoorGateToggle")]
+        public ScenarioType scenario = ScenarioType.Static;
 
         [Tooltip("Seed RNG — ten sam seed = te same wyniki. Kluczowe dla powtarzalności.")]
         public int randomSeed = 42;
@@ -93,13 +99,48 @@ namespace Pathfinding.Visualization
         [Tooltip("Czy mierzyć temperaturę CPU przy każdym teście (Windows only). Spowalnia ~100ms per pomiar.")]
         public bool monitorCPUTemperature = false;
 
+        [Header("═══ Headless Benchmark ═══")]
+        [Tooltip("Ile iteracji jednego algorytmu wykonać przed oddaniem klatki Unity w trybie bez wizualizacji.")]
+        [Range(1, 30)]
+        public int headlessIterationsPerYield = 3;
+
+        [Tooltip("Co ile wierszy CSV wymusić zapis na dysk w trybie bez wizualizacji.")]
+        [Range(1, 10000)]
+        public int headlessRowsPerFlush = 250;
+
+        [Tooltip("Klawisz proszący benchmark o zatrzymanie po najbliższej bezpiecznej porcji pracy.")]
+        public KeyCode stopBenchmarkKey = KeyCode.Escape;
+
         [Header("═══ Generacja Map Proceduralnych ═══")]
         [Tooltip("Źródło mapy: FromFile = wczytaj z pliku TXT, inne = generuj proceduralnie.")]
         public MapTopology mapSource = MapTopology.FromFile;
 
+        [Tooltip("Szerokość map proceduralnych w pełnym benchmarku.")]
+        [Range(10, 500)]
+        public int proceduralMapWidth = 32;
+
+        [Tooltip("Wysokość map proceduralnych w pełnym benchmarku.")]
+        [Range(10, 500)]
+        public int proceduralMapHeight = 20;
+
+        [Tooltip("Gdy włączone, pełny benchmark uruchamia te same testy dla wielu kwadratowych rozmiarów map.")]
+        public bool useSuiteMapSizes = false;
+
+        [Tooltip("Kwadratowe rozmiary map używane w pełnym benchmarku, np. 32 oznacza mapę 32x32.")]
+        public int[] suiteMapSizes = { 32, 64, 128 };
+
         [Tooltip("Zagęszczenie przeszkód dla map proceduralnych (0.0–0.5).")]
         [Range(0f, 0.5f)]
         public float proceduralDensity = 0.2f;
+
+        [Tooltip("Poziomy zagęszczenia przeszkód używane przez pełny benchmark.")]
+        public float[] suiteDensities = { 0.10f, 0.20f, 0.30f, 0.40f };
+
+        [Tooltip("Seedy map używane przez pełny benchmark.")]
+        public int[] suiteSeeds = { 42, 123, 256, 789 };
+
+        [Tooltip("Dodaje Map.txt jako dodatkową mapę w pełnym benchmarku.")]
+        public bool includeFileMapInFullSuite = false;
 
         [Header("═══ Distance Bucketing (Naukowy Dobór Punktów) ═══")]
         [Tooltip("Czy generować test cases automatycznie z distance bucketing zamiast czytać z pliku CSV.")]
@@ -134,6 +175,24 @@ namespace Pathfinding.Visualization
         [Range(0f, 0.5f)]
         public float initialWeightCoverage = 0.1f;
 
+        [Header("═══ DS4: Blokady na Trasie ═══")]
+        [Tooltip("Ile pól na bazowej trasie zmodyfikować przez dodanie/usunięcie przeszkód.")]
+        [Range(1, 30)]
+        public int pathObstructionChanges = 6;
+
+        [Tooltip("Co który krok bazowej trasy rozważać jako kandydat do blokady.")]
+        [Range(2, 12)]
+        public int pathObstructionSpacing = 4;
+
+        [Header("═══ DS5: Bramy / Drzwi ═══")]
+        [Tooltip("Liczba deterministycznych bram ustawianych na bazowej trasie.")]
+        [Range(1, 12)]
+        public int gateToggleCount = 4;
+
+        [Tooltip("Szerokość ściany bramy w polach. Wartości nieparzyste wyglądają najlepiej.")]
+        [Range(1, 7)]
+        public int gateWidth = 3;
+
         [Header("═══ Batch Generator ═══")]
         [Tooltip("Czy wygenerować wszystkie 64 kombinacje map przy starcie (zamiast benchmarku).")]
         public bool runBatchGeneration = false;
@@ -146,14 +205,19 @@ namespace Pathfinding.Visualization
         public GameObject basemapPrefab;
         [Tooltip("Sprite dla ściany/przeszkody")]
         public Sprite obstacleSprite;
-        [Tooltip("Sprite dla zmian dynamicznych")]
-        public Sprite dynamicChangeSprite;
+        [FormerlySerializedAs("dynamicChangeSprite")]
+        [Tooltip("Sprite dla pól zmienionych w DS3 albo markerów rekalkulacji.")]
+        public Sprite changeMarkerSprite;
+        [Tooltip("Sprite tylko dla ruchomych przeszkód DS2. Gdy puste, używany jest zwykły Obstacle Sprite.")]
+        public Sprite movingObstacleSprite;
         [Tooltip("Prefabrykat poruszającego się agenta (kostki)")]
         public GameObject agentPrefab;
         public float visualizationStepDelay = 0.05f;
         public float agentMoveSpeed = 10.0f;
         [Tooltip("Pauza w sekundach między kolejnymi algorytmami/testami.")]
         public float pauseBetweenTests = 2.0f;
+        [Tooltip("Pauza wizualna w DS2 w momencie wymuszonej rekalkulacji.")]
+        public float replanPauseDuration = 0.35f;
 
         [Header("═══ Kolory ═══")]
         public Color colorWalkable = Color.white;
@@ -161,6 +225,8 @@ namespace Pathfinding.Visualization
         public Color colorPath = new Color(1f, 1f, 0.2f, 0.9f);
         public Color colorStart = Color.red;
         public Color colorTarget = Color.green;
+        public Color colorReplanPause = new Color(1f, 0.35f, 0.1f, 1f);
+        public Color colorCurrentAgentCell = new Color(1f, 0.55f, 0.05f, 1f);
 
         // ─────────────────────────────────────────────────────────
         //  STAN WEWNĘTRZNY
@@ -172,11 +238,19 @@ namespace Pathfinding.Visualization
         private int _currentTestCaseIndex = 0;
         private SpriteRenderer[,] _basemapRenderers;
         private GameObject[,] _spawnedObstacles;
-        private GameObject[,] _spawnedDynamicChanges;
+        private GameObject[,] _spawnedChangeMarkers;
         private GameObject _agentObject;
         private bool _isVisualizing = false;
         private bool _isAutoRunning = false;
         private System.Random _shuffleRng;
+        private string _activeMapTopology = "FromFile";
+        private int _activeMapSeed = 0;
+        private float _activeMapDensity = 0f;
+        private int _activeMapWidth = 0;
+        private int _activeMapHeight = 0;
+        private int _suiteTestId = 0;
+        private bool _stopBenchmarkRequested = false;
+        private int _rowsSinceFlush = 0;
 
         // DS2/DS3 managery
         private MovingObstacleManager _ds2Manager;
@@ -186,6 +260,40 @@ namespace Pathfinding.Visualization
         {
             public int startX, startY;
             public int targetX, targetY;
+        }
+
+        private bool ShouldVisualize => !runWithoutVisualization && !runFullBenchmarkSuite;
+        private bool ShouldLogDetailedBenchmark => ShouldVisualize;
+        private const int HeadlessProgressInterval = 50;
+
+        private class MeasurementBatch
+        {
+            public BenchmarkMetrics Metrics;
+            public Pathfinding.Core.PathfindingResult VisualResult;
+            public bool Cancelled;
+        }
+
+        private bool IsMovingObstacleCell(int x, int y)
+        {
+            if (_ds2Manager == null)
+                return false;
+
+            Vector2Int pos = new Vector2Int(x, y);
+            foreach (var obstacle in _ds2Manager.Obstacles)
+            {
+                if (obstacle.CurrentPosition == pos)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private Sprite GetObstacleSpriteForCell(int x, int y)
+        {
+            if (movingObstacleSprite != null && scenario == ScenarioType.DS2_MovingObstacles && IsMovingObstacleCell(x, y))
+                return movingObstacleSprite;
+
+            return obstacleSprite;
         }
 
         // ─────────────────────────────────────────────────────────
@@ -203,6 +311,17 @@ namespace Pathfinding.Visualization
                 return;
             }
 
+            if (runFullBenchmarkSuite)
+            {
+                Debug.Log("[Visualizer] Pełny benchmark gotowy. Start: spacja albo Auto Start Benchmark.");
+                if (autoStartBenchmark)
+                {
+                    _isAutoRunning = true;
+                    StartCoroutine(RunFullBenchmarkSuite());
+                }
+                return;
+            }
+
             // Wczytaj lub wygeneruj mapę
             bool mapLoaded = false;
             if (mapSource == MapTopology.FromFile)
@@ -216,6 +335,14 @@ namespace Pathfinding.Visualization
 
             if (!mapLoaded) return;
 
+            _activeMapTopology = mapSource.ToString();
+            _activeMapSeed = mapSource == MapTopology.FromFile ? 0 : randomSeed;
+            _activeMapDensity = mapSource == MapTopology.FromFile
+                ? 1f - ((float)_gridMap.CountWalkable() / (_gridMap.Width * _gridMap.Height))
+                : proceduralDensity;
+            _activeMapWidth = _gridMap.Width;
+            _activeMapHeight = _gridMap.Height;
+
             _originalGridMap = _gridMap.Clone();
 
             // Wczytaj lub wygeneruj test cases
@@ -228,17 +355,34 @@ namespace Pathfinding.Visualization
                 LoadTestCases();
             }
 
-            GenerateBasemapVisuals();
+            if (ShouldVisualize)
+            {
+                GenerateBasemapVisuals();
+            }
+
             Debug.Log($"[Visualizer] Gotowy. Tryb: {benchmarkMode}, Scenariusz: {scenario}, " +
-                      $"Mapa: {mapSource}, Testy: {_testCases.Count}. Wciśnij SPACJĘ aby rozpocząć.");
+                      $"Mapa: {mapSource}, Testy: {_testCases.Count}. " +
+                      (autoStartBenchmark ? "Start automatyczny." : "Wciśnij SPACJĘ aby rozpocząć."));
+
+            if (autoStartBenchmark)
+            {
+                _isAutoRunning = true;
+                StartCoroutine(AutoRunAllCases());
+            }
         }
 
         private void Update()
         {
+            if (_isAutoRunning && Input.GetKeyDown(stopBenchmarkKey))
+            {
+                _stopBenchmarkRequested = true;
+                Debug.LogWarning($"[Visualizer] Zatrzymanie benchmarku zaplanowane po najbliższej bezpiecznej porcji pracy ({stopBenchmarkKey}).");
+            }
+
             if (Input.GetKeyDown(KeyCode.Space) && !_isAutoRunning)
             {
                 _isAutoRunning = true;
-                StartCoroutine(AutoRunAllCases());
+                StartCoroutine(runFullBenchmarkSuite ? RunFullBenchmarkSuite() : AutoRunAllCases());
             }
         }
 
@@ -249,6 +393,8 @@ namespace Pathfinding.Visualization
         private IEnumerator AutoRunAllCases()
         {
             string resultsPath = Path.Combine(Application.dataPath, "..", outputFileName);
+            _stopBenchmarkRequested = false;
+            _rowsSinceFlush = 0;
             Debug.Log($"[Visualizer] ══════════════════════════════════════════");
             Debug.Log($"[Visualizer] START BENCHMARKU");
             Debug.Log($"[Visualizer] Tryb: {benchmarkMode} | Scenariusz: {scenario}");
@@ -268,11 +414,14 @@ namespace Pathfinding.Visualization
 
             using (StreamWriter writer = new StreamWriter(resultsPath, false))
             {
-                writer.AutoFlush = true;
+                writer.AutoFlush = ShouldVisualize;
                 writer.WriteLine(BenchmarkMetrics.GetCsvHeader());
 
                 while (_currentTestCaseIndex < _testCases.Count)
                 {
+                    if (_stopBenchmarkRequested)
+                        break;
+
                     TestCase tc = _testCases[_currentTestCaseIndex];
                     int testId = _currentTestCaseIndex;
                     _currentTestCaseIndex++;
@@ -291,110 +440,130 @@ namespace Pathfinding.Visualization
                     List<IPathfindingAlgorithm> algorithmsToRun = GetAlgorithmsToRun();
                     ShuffleList(algorithmsToRun); // Fisher-Yates — eliminacja thermal throttling bias
 
-                    Debug.Log($"[Visualizer] ── Test {testId + 1}/{_testCases.Count} ── " +
-                              $"Kolejność: {string.Join(" → ", GetAlgorithmNames(algorithmsToRun))}");
-
-                    // DS2: inicjalizacja ruchomych przeszkód per test case
-                    if (scenario == ScenarioType.DS2_MovingObstacles)
+                    if (ShouldLogDetailedBenchmark)
                     {
-                        _ds2Manager = new MovingObstacleManager(randomSeed + testId);
-                        _ds2Manager.GenerateObstacles(_gridMap, movingObstacleCount, startPos, targetPos, patrolLength);
+                        Debug.Log($"[Visualizer] ── Test {testId + 1}/{_testCases.Count} ── " +
+                                  $"Kolejność: {string.Join(" → ", GetAlgorithmNames(algorithmsToRun))}");
+                    }
+
+
+
+
+                    List<Vector2Int> scenarioChanges = null;
+                    PrepareScenarioSnapshot(startPos, targetPos, testId, out scenarioChanges);
+                    GridMap scenarioSnapshot = _gridMap.Clone();
+
+                    if (ShouldVisualize)
                         RefreshBasemapColors();
-                    }
-
-                    // DS3: inicjalizacja wag terenu per test case
-                    if (scenario == ScenarioType.DS3_WeightedTerrain)
-                    {
-                        _ds3Manager = new WeightedTerrainManager(randomSeed + testId);
-                        _ds3Manager.InitializeWeights(_gridMap, weightChangePattern, initialWeightCoverage);
-                    }
-
-
-                    // ─── Scenariusz dynamiczny: zmodyfikuj mapę PRZED pętlą algorytmów ───
-                    // Zapewnia to, że wszystkie algorytmy w tym teście rozwiążą DOKŁADNIE tę samą mapę!
-                    List<Vector2Int> dynamicChanges = null;
-                    if (scenario == ScenarioType.DynamicAddWalls ||
-                        scenario == ScenarioType.DynamicRemoveWalls ||
-                        scenario == ScenarioType.DynamicToggle)
-                    {
-                        dynamicChanges = ApplyDynamicScenario(startPos, targetPos);
-                        RefreshBasemapColors();
-                    }
-                    else if (scenario == ScenarioType.DS2_MovingObstacles && _ds2Manager != null)
-                    {
-                        var ds2Moves = _ds2Manager.StepAll(_gridMap);
-                        yield return StartCoroutine(AnimateDS2Obstacles(ds2Moves));
-                        // Weryfikacja: upewnij się że WSZYSTKIE przeszkody blokują swoje pola po kroku
-                        _ds2Manager.VerifyObstaclePositions(_gridMap);
-                        RefreshBasemapColors();
-                    }
-                    else if (scenario == ScenarioType.DS3_WeightedTerrain && _ds3Manager != null)
-                    {
-                        dynamicChanges = _ds3Manager.ApplyDynamicWeightChanges(
-                            _gridMap, weightChangePattern, weightChangesPerStep, startPos, targetPos);
-                        RefreshBasemapColors(); // Jeśli używasz wag terenu do kolorowania
-                    }
 
                     float currentDensity = (scenario == ScenarioType.Static)
                         ? mapDensity
-                        : 1f - ((float)_gridMap.CountWalkable() / (_gridMap.Width * _gridMap.Height));
+                        : 1f - ((float)scenarioSnapshot.CountWalkable() / (scenarioSnapshot.Width * scenarioSnapshot.Height));
 
                     foreach (var algorithm in algorithmsToRun)
                     {
+                        if (_stopBenchmarkRequested)
+                            break;
+
+                        _gridMap = ShouldVisualize ? scenarioSnapshot.Clone() : scenarioSnapshot;
+                        if (ShouldVisualize) RefreshBasemapColors();
                         // ─── KROK 1: Pomiar z N iteracjami ───
                         BenchmarkMetrics metrics;
                         Pathfinding.Core.PathfindingResult visualResult;
-                        MeasureAlgorithm(algorithm, _gridMap, startPos, targetPos,
-                            testId, currentDensity, out metrics, out visualResult);
+
+                        if (ShouldVisualize)
+                        {
+                            MeasureAlgorithm(algorithm, _gridMap, startPos, targetPos,
+                                testId, currentDensity, out metrics, out visualResult);
+                        }
+                        else
+                        {
+                            MeasurementBatch measurement = new MeasurementBatch();
+                            yield return StartCoroutine(MeasureAlgorithmBatched(
+                                algorithm, _gridMap, startPos, targetPos, testId, currentDensity, measurement));
+
+                            if (measurement.Cancelled)
+                                break;
+
+                            metrics = measurement.Metrics;
+                            visualResult = measurement.VisualResult;
+                        }
 
                         if (monitorCPUTemperature)
                         {
                             metrics.CPUTemperature = HardwareMonitor.GetCPUTemperature();
                         }
 
-                        Debug.Log($"[Visualizer] {algorithm.AlgorithmName}: " +
-                                  $"start={startPos} → cel={targetPos} | " +
-                                  $"Znaleziono: {metrics.PathFound} | " +
-                                  $"Czas: {metrics.AvgExecutionTimeMs:F4}ms | " +
-                                  $"Węzły: {metrics.ExploredNodes}");
-
-                        // ─── KROK 2: Animacja wizualizacji ───
-                        StartCoroutine(VisualizeRoutine(visualResult, startPos, targetPos, 
-                            algorithm.AlgorithmName, dynamicChanges));
-
-                        while (_isVisualizing)
+                        if (ShouldLogDetailedBenchmark)
                         {
-                            yield return null;
+                            Debug.Log($"[Visualizer] {algorithm.AlgorithmName}: " +
+                                      $"start={startPos} → cel={targetPos} | " +
+                                      $"Znaleziono: {metrics.PathFound} | " +
+                                      $"Czas: {metrics.AvgExecutionTimeMs:F4}ms | " +
+                                      $"Węzły: {metrics.ExploredNodes}");
+                        }
+
+                        if (ShouldVisualize)
+                        {
+                            // ─── KROK 2: Animacja wizualizacji ───
+                            if (scenario == ScenarioType.DS2_MovingObstacles)
+                            {
+                                StartCoroutine(VisualizeDS2ReplanningRoutine(
+                                    algorithm, visualResult, startPos, targetPos, testId));
+                            }
+                            else
+                            {
+                                StartCoroutine(VisualizeRoutine(visualResult, startPos, targetPos,
+                                    algorithm.AlgorithmName, scenarioChanges));
+                            }
+
+                            while (_isVisualizing)
+                            {
+                                yield return null;
+                            }
                         }
 
                         // ─── KROK 3: Zapis PO animacji ───
                         writer.WriteLine(metrics.ToCsvRow());
-                        Debug.Log($"[Visualizer] ✓ Zapisano: {algorithm.AlgorithmName} | " +
-                                  $"Ścieżka: {metrics.PathLength:F2} | " +
-                                  $"Smoothness: {metrics.PathSmoothness:F4}");
-                        yield return new WaitForSeconds(pauseBetweenTests);
-                    }
-
-                    // ─── KROK 4: Cofnij zmiany dynamiczne (resetuj mapę) po przetestowaniu wszystkich algorytmów ───
-                    if (scenario == ScenarioType.DynamicAddWalls ||
-                        scenario == ScenarioType.DynamicRemoveWalls ||
-                        scenario == ScenarioType.DynamicToggle)
-                    {
-                        if (dynamicChanges != null && dynamicChanges.Count > 0)
+                        _rowsSinceFlush++;
+                        if (!ShouldVisualize && _rowsSinceFlush >= headlessRowsPerFlush)
                         {
-                            RevertDynamicChanges(dynamicChanges);
-                            RefreshBasemapColors();
+                            writer.Flush();
+                            _rowsSinceFlush = 0;
+                            yield return null;
                         }
+
+                        if (ShouldLogDetailedBenchmark)
+                        {
+                            Debug.Log($"[Visualizer] ✓ Zapisano: {algorithm.AlgorithmName} | " +
+                                      $"Ścieżka: {metrics.PathLength:F2} | " +
+                                      $"Smoothness: {metrics.PathSmoothness:F4}");
+                        }
+
+                        if (ShouldVisualize)
+                            yield return new WaitForSeconds(pauseBetweenTests);
                     }
 
-                    // Po zakończeniu test case'a: resetuj mapę dla DS2/DS3
+                    if (!ShouldVisualize && (testId + 1) % HeadlessProgressInterval == 0)
+                    {
+                        writer.Flush();
+                        _rowsSinceFlush = 0;
+                        Debug.Log($"[Visualizer] Postęp headless: {testId + 1}/{_testCases.Count} testów.");
+                        yield return null;
+                    }
+
+                    // Reset mapy po zakonczeniu test case DS2/DS3.
                     if (scenario == ScenarioType.DS2_MovingObstacles ||
-                        scenario == ScenarioType.DS3_WeightedTerrain)
+                        scenario == ScenarioType.DS3_WeightedTerrain ||
+                        scenario == ScenarioType.DS4_PathObstruction ||
+                        scenario == ScenarioType.DS5_DoorGateToggle)
                     {
                         _gridMap = _originalGridMap.Clone();
-                        RefreshBasemapColors();
+                        if (ShouldVisualize) RefreshBasemapColors();
                     }
                 }
+
+                writer.Flush();
             }
 
             // Monitoring temperatury — koniec
@@ -406,10 +575,363 @@ namespace Pathfinding.Visualization
             }
 
             Debug.Log($"[Visualizer] ══════════════════════════════════════════");
-            Debug.Log($"[Visualizer] ✓ BENCHMARK ZAKOŃCZONY");
+            Debug.Log(_stopBenchmarkRequested
+                ? "[Visualizer] BENCHMARK ZATRZYMANY PRZEZ UŻYTKOWNIKA"
+                : "[Visualizer] ✓ BENCHMARK ZAKOŃCZONY");
             Debug.Log($"[Visualizer] Wyniki: {Path.GetFullPath(resultsPath)}");
             Debug.Log($"[Visualizer] ══════════════════════════════════════════");
             _isAutoRunning = false;
+        }
+
+        private IEnumerator RunFullBenchmarkSuite()
+        {
+            string resultsPath = Path.Combine(Application.dataPath, "..", outputFileName);
+            ScenarioType originalScenario = scenario;
+            MapTopology originalMapSource = mapSource;
+            int originalRandomSeed = randomSeed;
+            List<TestCase> originalTestCases = _testCases;
+
+            _suiteTestId = 0;
+            _stopBenchmarkRequested = false;
+            _rowsSinceFlush = 0;
+
+            Debug.Log("[Visualizer] START PEŁNEGO BENCHMARKU HEADLESS");
+            Debug.Log($"[Visualizer] Tryb algorytmów: {benchmarkMode} | Iteracje: {benchmarkIterations}");
+            Debug.Log($"[Visualizer] Przerwanie: naciśnij {stopBenchmarkKey}, zapis CSV zostanie domknięty.");
+            Debug.Log($"[Visualizer] Wyniki CSV: {resultsPath}");
+
+            float tempStart = -1f;
+            if (monitorCPUTemperature)
+            {
+                tempStart = HardwareMonitor.GetCPUTemperature();
+                Debug.Log($"[HardwareMonitor] Temp. CPU na starcie: {tempStart:F1}°C");
+            }
+
+            using (StreamWriter writer = new StreamWriter(resultsPath, false))
+            {
+                writer.AutoFlush = false;
+                writer.WriteLine(BenchmarkMetrics.GetCsvHeader());
+
+                if (includeFileMapInFullSuite && LoadGridMap())
+                {
+                    _activeMapTopology = "FromFile";
+                    _activeMapSeed = 0;
+                    _activeMapDensity = 1f - ((float)_gridMap.CountWalkable() / (_gridMap.Width * _gridMap.Height));
+                    _activeMapWidth = _gridMap.Width;
+                    _activeMapHeight = _gridMap.Height;
+                    _testCases = GenerateTestCasesForMap(_gridMap, randomSeed);
+                    yield return StartCoroutine(RunAllScenariosForCurrentMap(writer));
+                }
+
+                foreach ((int width, int height) size in GetSuiteMapSizes())
+                {
+                    if (_stopBenchmarkRequested)
+                        break;
+
+                    foreach (MapTopology topology in GetSuiteTopologies())
+                    {
+                        if (_stopBenchmarkRequested)
+                            break;
+
+                        IMapGenerator generator = CreateMapGenerator(topology);
+                        if (generator == null) continue;
+
+                        foreach (float density in GetSuiteDensities())
+                        {
+                            if (_stopBenchmarkRequested)
+                                break;
+
+                            foreach (int seed in GetSuiteSeeds())
+                            {
+                                if (_stopBenchmarkRequested)
+                                    break;
+
+                                randomSeed = seed;
+                                _shuffleRng = new System.Random(seed);
+                                _gridMap = generator.Generate(size.width, size.height, density, seed);
+                                _activeMapTopology = generator.TopologyName;
+                                _activeMapSeed = seed;
+                                _activeMapDensity = density;
+                                _activeMapWidth = _gridMap.Width;
+                                _activeMapHeight = _gridMap.Height;
+                                _testCases = GenerateTestCasesForMap(_gridMap, seed);
+
+                                Debug.Log($"[Visualizer] Mapa: {_activeMapTopology}, rozmiar={_activeMapWidth}x{_activeMapHeight}, density={density:P0}, seed={seed}, testy={_testCases.Count}");
+                                yield return StartCoroutine(RunAllScenariosForCurrentMap(writer));
+                            }
+                        }
+                    }
+                }
+
+                writer.Flush();
+            }
+
+            if (monitorCPUTemperature)
+            {
+                float tempEnd = HardwareMonitor.GetCPUTemperature();
+                Debug.Log($"[HardwareMonitor] Temp. CPU na końcu: {tempEnd:F1}°C (delta: {tempEnd - tempStart:F1}°C)");
+            }
+
+            scenario = originalScenario;
+            mapSource = originalMapSource;
+            randomSeed = originalRandomSeed;
+            _testCases = originalTestCases;
+            _shuffleRng = new System.Random(randomSeed);
+
+            if (_stopBenchmarkRequested)
+            {
+                Debug.LogWarning($"[Visualizer] Pełny benchmark został zatrzymany. Częściowe wyniki zapisane w: {Path.GetFullPath(resultsPath)}");
+            }
+            else
+            {
+                Debug.Log($"[Visualizer] PEŁNY BENCHMARK ZAKOŃCZONY. Wyniki: {Path.GetFullPath(resultsPath)}");
+            }
+
+            _isAutoRunning = false;
+        }
+
+        private IEnumerator RunAllScenariosForCurrentMap(StreamWriter writer)
+        {
+            GridMap baseMap = _gridMap.Clone();
+            List<TestCase> mapTestCases = new List<TestCase>(_testCases);
+
+            foreach (ScenarioType suiteScenario in Enum.GetValues(typeof(ScenarioType)))
+            {
+                if (_stopBenchmarkRequested)
+                    yield break;
+
+                scenario = suiteScenario;
+                Debug.Log($"[Visualizer] Scenariusz: {scenario} | Mapa: {_activeMapTopology}");
+
+                for (int i = 0; i < mapTestCases.Count; i++)
+                {
+                    if (_stopBenchmarkRequested)
+                        yield break;
+
+                    _gridMap = baseMap.Clone();
+                    _originalGridMap = baseMap.Clone();
+                    _shuffleRng = new System.Random(_activeMapSeed + _suiteTestId + (int)scenario * 1000);
+
+                    TestCase tc = mapTestCases[i];
+                    Vector2Int startPos = new Vector2Int(tc.startX, tc.startY);
+                    Vector2Int targetPos = new Vector2Int(tc.targetX, tc.targetY);
+
+                    if (!_gridMap.IsWalkable(startPos) || !_gridMap.IsWalkable(targetPos))
+                    {
+                        Debug.LogWarning($"[Visualizer] Pomijam test {_suiteTestId}: start/cel nie jest walkable.");
+                        _suiteTestId++;
+                        continue;
+                    }
+
+                    List<Vector2Int> scenarioChanges;
+                    PrepareScenarioSnapshot(startPos, targetPos, _suiteTestId, out scenarioChanges);
+                    GridMap scenarioSnapshot = _gridMap.Clone();
+
+                    float currentDensity = 1f - ((float)scenarioSnapshot.CountWalkable() / (scenarioSnapshot.Width * scenarioSnapshot.Height));
+                    List<IPathfindingAlgorithm> algorithmsToRun = GetAlgorithmsToRun();
+                    ShuffleList(algorithmsToRun);
+
+                    foreach (IPathfindingAlgorithm algorithm in algorithmsToRun)
+                    {
+                        if (_stopBenchmarkRequested)
+                            yield break;
+
+                        GridMap algorithmGrid = scenarioSnapshot;
+                        MeasurementBatch measurement = new MeasurementBatch();
+                        yield return StartCoroutine(MeasureAlgorithmBatched(
+                            algorithm, algorithmGrid, startPos, targetPos, _suiteTestId, currentDensity, measurement));
+
+                        if (measurement.Cancelled)
+                            yield break;
+
+                        BenchmarkMetrics metrics = measurement.Metrics;
+
+                        if (monitorCPUTemperature)
+                            metrics.CPUTemperature = HardwareMonitor.GetCPUTemperature();
+
+                        writer.WriteLine(metrics.ToCsvRow());
+                        _rowsSinceFlush++;
+
+                        if (_rowsSinceFlush >= headlessRowsPerFlush)
+                        {
+                            writer.Flush();
+                            _rowsSinceFlush = 0;
+                            yield return null;
+                        }
+                    }
+
+                    _suiteTestId++;
+                    if (_suiteTestId % HeadlessProgressInterval == 0)
+                    {
+                        writer.Flush();
+                        Debug.Log($"[Visualizer] Postęp pełnego benchmarku: {_suiteTestId} test cases.");
+                        yield return null;
+                    }
+                }
+            }
+        }
+
+        private void PrepareScenarioSnapshot(Vector2Int startPos, Vector2Int targetPos, int testId,
+            out List<Vector2Int> scenarioChanges)
+        {
+            scenarioChanges = null;
+
+            if (scenario == ScenarioType.DS2_MovingObstacles)
+            {
+                _ds2Manager = CreateDS2ManagerForCurrentTest(_gridMap, startPos, targetPos, testId);
+                _ds2Manager.StepAll(_gridMap);
+                _ds2Manager.VerifyObstaclePositions(_gridMap);
+                return;
+            }
+
+            if (scenario == ScenarioType.DS3_WeightedTerrain)
+            {
+                int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId;
+                _ds3Manager = new WeightedTerrainManager(seed);
+                _ds3Manager.InitializeWeights(_gridMap, weightChangePattern, initialWeightCoverage);
+                scenarioChanges = _ds3Manager.ApplyDynamicWeightChanges(_gridMap, weightChangePattern,
+                    weightChangesPerStep, startPos, targetPos);
+                return;
+            }
+
+            if (scenario == ScenarioType.DS4_PathObstruction)
+            {
+                scenarioChanges = ApplyDS4PathObstruction(startPos, targetPos, testId);
+                return;
+            }
+
+            if (scenario == ScenarioType.DS5_DoorGateToggle)
+            {
+                scenarioChanges = ApplyDS5DoorGateToggle(startPos, targetPos, testId);
+            }
+        }
+
+        private MovingObstacleManager CreateDS2ManagerForCurrentTest(
+            GridMap grid, Vector2Int startPos, Vector2Int targetPos, int testId)
+        {
+            int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId;
+            var manager = new MovingObstacleManager(seed);
+            manager.GenerateObstacles(grid, movingObstacleCount, startPos, targetPos, patrolLength);
+            return manager;
+        }
+
+        private List<Vector2Int> ApplyDS4PathObstruction(Vector2Int startPos, Vector2Int targetPos, int testId)
+        {
+            var changes = new List<Vector2Int>();
+            var baseline = new AStarAlgorithm().FindPath(_gridMap, startPos, targetPos);
+            if (!baseline.PathFound || baseline.Path == null || baseline.Path.Count == 0)
+                return changes;
+
+            int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId + 4000;
+            var rng = new System.Random(seed);
+            int spacing = Mathf.Max(2, pathObstructionSpacing);
+
+            for (int i = spacing; i < baseline.Path.Count - 1 && changes.Count < pathObstructionChanges; i += spacing)
+            {
+                Vector2Int pos = baseline.Path[i];
+                if (IsProtectedPoint(pos, startPos, targetPos))
+                    continue;
+
+                if (_gridMap.IsWalkable(pos))
+                {
+                    _gridMap.SetWalkable(pos, false);
+                    changes.Add(pos);
+                }
+
+                if (changes.Count >= pathObstructionChanges)
+                    break;
+
+                if (TryFindNearbyObstacleToOpen(pos, startPos, targetPos, rng, out Vector2Int opened))
+                {
+                    _gridMap.SetWalkable(opened, true);
+                    changes.Add(opened);
+                }
+            }
+
+            return changes;
+        }
+
+        private List<Vector2Int> ApplyDS5DoorGateToggle(Vector2Int startPos, Vector2Int targetPos, int testId)
+        {
+            var changes = new List<Vector2Int>();
+            var baseline = new AStarAlgorithm().FindPath(_gridMap, startPos, targetPos);
+            if (!baseline.PathFound || baseline.Path == null || baseline.Path.Count < 4)
+                return changes;
+
+            int gatesPlaced = 0;
+            int spacing = Mathf.Max(3, baseline.Path.Count / Mathf.Max(1, gateToggleCount + 1));
+            int halfWidth = Mathf.Max(0, gateWidth / 2);
+
+            for (int i = spacing; i < baseline.Path.Count - 1 && gatesPlaced < gateToggleCount; i += spacing)
+            {
+                Vector2Int gateCenter = baseline.Path[i];
+                if (IsProtectedPoint(gateCenter, startPos, targetPos))
+                    continue;
+
+                Vector2Int previous = baseline.Path[Mathf.Max(0, i - 1)];
+                Vector2Int next = baseline.Path[Mathf.Min(baseline.Path.Count - 1, i + 1)];
+                Vector2Int direction = new Vector2Int(Math.Sign(next.x - previous.x), Math.Sign(next.y - previous.y));
+                if (direction == Vector2Int.zero)
+                    direction = Vector2Int.right;
+
+                Vector2Int perpendicular = new Vector2Int(-direction.y, direction.x);
+                if (perpendicular == Vector2Int.zero)
+                    perpendicular = Vector2Int.up;
+
+                bool closeDoor = ((testId + gatesPlaced) % 2 == 0);
+
+                for (int offset = -halfWidth; offset <= halfWidth; offset++)
+                {
+                    Vector2Int wallPos = gateCenter + perpendicular * offset;
+                    if (!_gridMap.IsValidCoordinate(wallPos.x, wallPos.y) || IsProtectedPoint(wallPos, startPos, targetPos))
+                        continue;
+
+                    bool shouldBeWalkable = wallPos == gateCenter && !closeDoor;
+                    if (_gridMap.IsWalkable(wallPos) != shouldBeWalkable)
+                    {
+                        _gridMap.SetWalkable(wallPos, shouldBeWalkable);
+                        changes.Add(wallPos);
+                    }
+                }
+
+                gatesPlaced++;
+            }
+
+            return changes;
+        }
+
+        private bool TryFindNearbyObstacleToOpen(
+            Vector2Int center, Vector2Int startPos, Vector2Int targetPos,
+            System.Random rng, out Vector2Int obstacle)
+        {
+            var candidates = new List<Vector2Int>();
+            for (int dx = -2; dx <= 2; dx++)
+            {
+                for (int dy = -2; dy <= 2; dy++)
+                {
+                    Vector2Int pos = new Vector2Int(center.x + dx, center.y + dy);
+                    if (!_gridMap.IsValidCoordinate(pos.x, pos.y) || IsProtectedPoint(pos, startPos, targetPos))
+                        continue;
+
+                    if (!_gridMap.IsWalkable(pos))
+                        candidates.Add(pos);
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                obstacle = default;
+                return false;
+            }
+
+            obstacle = candidates[rng.Next(candidates.Count)];
+            return true;
+        }
+
+        private bool IsProtectedPoint(Vector2Int pos, Vector2Int startPos, Vector2Int targetPos)
+        {
+            return Math.Abs(pos.x - startPos.x) <= 1 && Math.Abs(pos.y - startPos.y) <= 1 ||
+                   Math.Abs(pos.x - targetPos.x) <= 1 && Math.Abs(pos.y - targetPos.y) <= 1;
         }
 
         private IEnumerator AnimateDS2Obstacles(List<(Vector2Int oldPos, Vector2Int newPos)> moves)
@@ -460,6 +982,148 @@ namespace Pathfinding.Visualization
             }
         }
 
+        private IEnumerator VisualizeDS2ReplanningRoutine(
+            IPathfindingAlgorithm algorithm,
+            Pathfinding.Core.PathfindingResult initialResult,
+            Vector2Int startPos,
+            Vector2Int targetPos,
+            int testId)
+        {
+            _isVisualizing = true;
+
+            GridMap visualGrid = _originalGridMap.Clone();
+            MovingObstacleManager visualManager = CreateDS2ManagerForCurrentTest(
+                visualGrid, startPos, targetPos, testId);
+            _ds2Manager = visualManager;
+            visualManager.StepAll(visualGrid);
+            visualManager.VerifyObstaclePositions(visualGrid);
+
+            _gridMap = visualGrid;
+            RefreshBasemapColors();
+
+            if (_agentObject != null)
+            {
+                _agentObject.SetActive(true);
+                _agentObject.transform.position = new Vector3(startPos.x, startPos.y, -2f);
+            }
+
+            Vector2Int currentPos = startPos;
+            Pathfinding.Core.PathfindingResult currentResult = initialResult;
+            int replanCount = 0;
+            int safetyLimit = visualGrid.Width * visualGrid.Height * 2;
+
+            while (currentPos != targetPos && safetyLimit-- > 0)
+            {
+                yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, true));
+
+                if (currentResult == null || !currentResult.PathFound || currentResult.Path == null || currentResult.Path.Count < 2)
+                {
+                    Debug.LogWarning($"[Visualizer][DS2] {algorithm.AlgorithmName}: brak dalszej drogi po {replanCount} rekalkulacjach.");
+                    break;
+                }
+
+                bool replanned = false;
+                for (int i = 1; i < currentResult.Path.Count; i++)
+                {
+                    Vector2Int nextPos = currentResult.Path[i];
+
+                    List<(Vector2Int oldPos, Vector2Int newPos)> moves = visualManager.StepAll(visualGrid);
+                    visualManager.VerifyObstaclePositions(visualGrid);
+                    yield return StartCoroutine(AnimateDS2Obstacles(moves));
+
+                    _gridMap = visualGrid;
+                    RefreshBasemapColors();
+                    yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, false));
+
+                    if (!visualGrid.IsWalkable(nextPos))
+                    {
+                        replanCount++;
+                        if (_basemapRenderers != null)
+                        {
+                            _basemapRenderers[currentPos.x, currentPos.y].color = colorCurrentAgentCell;
+                            _basemapRenderers[nextPos.x, nextPos.y].color = colorReplanPause;
+                            _basemapRenderers[startPos.x, startPos.y].color = colorStart;
+                            _basemapRenderers[targetPos.x, targetPos.y].color = colorTarget;
+                        }
+                        Debug.Log($"[Visualizer][DS2] {algorithm.AlgorithmName}: rekalkulacja #{replanCount}, zablokowany krok {nextPos}.");
+                        currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
+                        replanned = true;
+                        yield return new WaitForSeconds(replanPauseDuration);
+                        break;
+                    }
+
+                    yield return StartCoroutine(MoveAgentTo(nextPos));
+                    currentPos = nextPos;
+
+                    if (_basemapRenderers != null && currentPos != targetPos)
+                        _basemapRenderers[currentPos.x, currentPos.y].color = colorPath;
+
+                    if (currentPos == targetPos)
+                        break;
+                }
+
+                if (!replanned && currentPos != targetPos)
+                    currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
+            }
+
+            Debug.Log($"[Visualizer][DS2] {algorithm.AlgorithmName}: wizualizacja zakończona, rekalkulacje={replanCount}.");
+            _isVisualizing = false;
+        }
+
+        private IEnumerator PaintPathfindingOverlay(
+            Pathfinding.Core.PathfindingResult result,
+            Vector2Int startPos,
+            Vector2Int targetPos,
+            bool animateExplored)
+        {
+            RefreshBasemapColors();
+
+            if (_basemapRenderers != null)
+            {
+                _basemapRenderers[startPos.x, startPos.y].color = colorStart;
+                _basemapRenderers[targetPos.x, targetPos.y].color = colorTarget;
+            }
+
+            if (result == null || !result.PathFound)
+                yield break;
+
+            foreach (Vector2Int pos in result.ExploredNodesHistory)
+            {
+                if (pos != startPos && pos != targetPos &&
+                    pos.x >= 0 && pos.x < _gridMap.Width && pos.y >= 0 && pos.y < _gridMap.Height)
+                {
+                    _basemapRenderers[pos.x, pos.y].color = colorExplored;
+                    if (animateExplored)
+                        yield return new WaitForSeconds(Mathf.Min(visualizationStepDelay, 0.02f));
+                }
+            }
+
+            foreach (Vector2Int pos in result.Path)
+            {
+                if (pos != startPos && pos != targetPos &&
+                    pos.x >= 0 && pos.x < _gridMap.Width && pos.y >= 0 && pos.y < _gridMap.Height)
+                {
+                    _basemapRenderers[pos.x, pos.y].color = colorPath;
+                }
+            }
+        }
+
+        private IEnumerator MoveAgentTo(Vector2Int gridPos)
+        {
+            if (_agentObject == null)
+                yield break;
+
+            Vector3 nextPosition = new Vector3(gridPos.x, gridPos.y, -2f);
+            while (Vector3.Distance(_agentObject.transform.position, nextPosition) > 0.01f)
+            {
+                _agentObject.transform.position = Vector3.MoveTowards(
+                    _agentObject.transform.position, nextPosition, agentMoveSpeed * Time.deltaTime);
+                yield return null;
+            }
+
+            _agentObject.transform.position = nextPosition;
+        }
+
         // ─────────────────────────────────────────────────────────
         //  POMIAR ALGORYTMU
         // ─────────────────────────────────────────────────────────
@@ -477,25 +1141,35 @@ namespace Pathfinding.Visualization
             out BenchmarkMetrics metrics, out Pathfinding.Core.PathfindingResult visualResult)
         {
             var allResults = new List<Pathfinding.Core.PathfindingResult>(benchmarkIterations);
+            bool previousHistoryRecording = PathfindingRuntimeOptions.RecordExploredNodesHistory;
 
-            for (int iter = 0; iter < benchmarkIterations; iter++)
+            try
             {
-                // GC.Collect() TYLKO przed cold start — nie blokuj silnika w warm iterations
-                long gcBefore;
-                if (iter == 0)
-                    gcBefore = HardwareMonitor.ForceGCAndGetMemory();
-                else
-                    gcBefore = GC.GetTotalMemory(false);
+                for (int iter = 0; iter < benchmarkIterations; iter++)
+                {
+                    PathfindingRuntimeOptions.RecordExploredNodesHistory = ShouldVisualize && iter == 0;
 
-                Pathfinding.Core.PathfindingResult result = algorithm.FindPath(grid, startPos, targetPos);
+                    // GC.Collect() TYLKO przed cold start — nie blokuj silnika w warm iterations
+                    long gcBefore;
+                    if (iter == 0)
+                        gcBefore = HardwareMonitor.ForceGCAndGetMemory();
+                    else
+                        gcBefore = GC.GetTotalMemory(false);
 
-                long gcAfter = GC.GetTotalMemory(false);
-                result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
+                    Pathfinding.Core.PathfindingResult result = algorithm.FindPath(grid, startPos, targetPos);
 
-                if (result.PathFound)
-                    result.CalculateSmoothnessMetrics();
+                    long gcAfter = GC.GetTotalMemory(false);
+                    result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
 
-                allResults.Add(result);
+                    if (result.PathFound)
+                        result.CalculateSmoothnessMetrics();
+
+                    allResults.Add(result);
+                }
+            }
+            finally
+            {
+                PathfindingRuntimeOptions.RecordExploredNodesHistory = previousHistoryRecording;
             }
 
             visualResult = allResults[0];
@@ -503,11 +1177,10 @@ namespace Pathfinding.Visualization
             string scenarioLabel = scenario switch
             {
                 ScenarioType.Static => "Static",
-                ScenarioType.DynamicAddWalls => "DynamicAddWalls",
-                ScenarioType.DynamicRemoveWalls => "DynamicRemoveWalls",
-                ScenarioType.DynamicToggle => "DynamicToggle",
                 ScenarioType.DS2_MovingObstacles => "DS2_MovingObstacles",
                 ScenarioType.DS3_WeightedTerrain => "DS3_WeightedTerrain",
+                ScenarioType.DS4_PathObstruction => "DS4_PathObstruction",
+                ScenarioType.DS5_DoorGateToggle => "DS5_DoorGateToggle",
                 _ => "Static"
             };
 
@@ -520,86 +1193,92 @@ namespace Pathfinding.Visualization
                 TargetX = targetPos.x,
                 TargetY = targetPos.y,
                 Scenario = scenarioLabel,
-                ObstacleDensity = density
+                ObstacleDensity = density,
+                MapTopology = _activeMapTopology,
+                MapSeed = _activeMapSeed,
+                MapDensity = _activeMapDensity,
+                MapWidth = _activeMapWidth,
+                MapHeight = _activeMapHeight
             };
             metrics.AggregateFrom(allResults);
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  SCENARIUSZE DYNAMICZNE
-        // ─────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Aplikuje wybrany scenariusz dynamiczny.
-        /// Zwraca listę zmienionych pozycji do późniejszego cofnięcia.
-        /// 
-        /// Scenariusze:
-        ///   DynamicAddWalls — dodaje losowe ściany (walkable → obstacle)
-        ///   DynamicRemoveWalls — usuwa losowe ściany (obstacle → walkable)
-        ///   DynamicToggle — przełącza losowe pola
-        /// </summary>
-        private List<Vector2Int> ApplyDynamicScenario(Vector2Int start, Vector2Int target)
+        private IEnumerator MeasureAlgorithmBatched(
+            IPathfindingAlgorithm algorithm, GridMap grid,
+            Vector2Int startPos, Vector2Int targetPos,
+            int testId, float density,
+            MeasurementBatch measurement)
         {
-            var changes = new List<Vector2Int>();
-            int attempts = 0;
-            int maxAttempts = dynamicChangesCount * 20;
+            var allResults = new List<Pathfinding.Core.PathfindingResult>(benchmarkIterations);
+            bool previousHistoryRecording = PathfindingRuntimeOptions.RecordExploredNodesHistory;
+            int batchSize = Mathf.Max(1, headlessIterationsPerYield);
 
-            while (changes.Count < dynamicChangesCount && attempts < maxAttempts)
+            try
             {
-                attempts++;
-                int x = _shuffleRng.Next(0, _gridMap.Width);
-                int y = _shuffleRng.Next(0, _gridMap.Height);
-                Vector2Int pos = new Vector2Int(x, y);
-
-                // Chronimy start i cel (i ich sąsiadów)
-                if (IsNearPoint(pos, start, 1) || IsNearPoint(pos, target, 1))
-                    continue;
-
-                bool currentWalkable = _gridMap.IsWalkable(x, y);
-
-                switch (scenario)
+                for (int iter = 0; iter < benchmarkIterations; iter++)
                 {
-                    case ScenarioType.DynamicAddWalls:
-                        if (currentWalkable) // Dodaj ścianę tylko tam gdzie jest wolne
-                        {
-                            _gridMap.SetWalkable(x, y, false);
-                            changes.Add(pos);
-                        }
-                        break;
+                    if (_stopBenchmarkRequested)
+                    {
+                        measurement.Cancelled = true;
+                        yield break;
+                    }
 
-                    case ScenarioType.DynamicRemoveWalls:
-                        if (!currentWalkable) // Usuń ścianę tylko tam gdzie jest blokada
-                        {
-                            _gridMap.SetWalkable(x, y, true);
-                            changes.Add(pos);
-                        }
-                        break;
+                    PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
 
-                    case ScenarioType.DynamicToggle:
-                        _gridMap.SetWalkable(x, y, !currentWalkable);
-                        changes.Add(pos);
-                        break;
+                    long gcBefore;
+                    if (iter == 0)
+                        gcBefore = HardwareMonitor.ForceGCAndGetMemory();
+                    else
+                        gcBefore = GC.GetTotalMemory(false);
+
+                    Pathfinding.Core.PathfindingResult result = algorithm.FindPath(grid, startPos, targetPos);
+
+                    long gcAfter = GC.GetTotalMemory(false);
+                    result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
+
+                    if (result.PathFound)
+                        result.CalculateSmoothnessMetrics();
+
+                    allResults.Add(result);
+
+                    if ((iter + 1) % batchSize == 0 && iter + 1 < benchmarkIterations)
+                        yield return null;
                 }
             }
-
-            return changes;
-        }
-
-        /// <summary>
-        /// Cofa zmiany dynamiczne — przywraca stan sprzed modyfikacji.
-        /// </summary>
-        private void RevertDynamicChanges(List<Vector2Int> changes)
-        {
-            foreach (var pos in changes)
+            finally
             {
-                bool currentState = _gridMap.IsWalkable(pos);
-                _gridMap.SetWalkable(pos, !currentState);
+                PathfindingRuntimeOptions.RecordExploredNodesHistory = previousHistoryRecording;
             }
-        }
 
-        private bool IsNearPoint(Vector2Int a, Vector2Int b, int radius)
-        {
-            return Math.Abs(a.x - b.x) <= radius && Math.Abs(a.y - b.y) <= radius;
+            measurement.VisualResult = allResults.Count > 0 ? allResults[0] : null;
+
+            string scenarioLabel = scenario switch
+            {
+                ScenarioType.Static => "Static",
+                ScenarioType.DS2_MovingObstacles => "DS2_MovingObstacles",
+                ScenarioType.DS3_WeightedTerrain => "DS3_WeightedTerrain",
+                ScenarioType.DS4_PathObstruction => "DS4_PathObstruction",
+                ScenarioType.DS5_DoorGateToggle => "DS5_DoorGateToggle",
+                _ => "Static"
+            };
+
+            measurement.Metrics = new BenchmarkMetrics
+            {
+                AlgorithmName = algorithm.AlgorithmName,
+                TestID = testId,
+                StartX = startPos.x,
+                StartY = startPos.y,
+                TargetX = targetPos.x,
+                TargetY = targetPos.y,
+                Scenario = scenarioLabel,
+                ObstacleDensity = density,
+                MapTopology = _activeMapTopology,
+                MapSeed = _activeMapSeed,
+                MapDensity = _activeMapDensity,
+                MapWidth = _activeMapWidth,
+                MapHeight = _activeMapHeight
+            };
+            measurement.Metrics.AggregateFrom(allResults);
         }
 
         // ─────────────────────────────────────────────────────────
@@ -632,8 +1311,8 @@ namespace Pathfinding.Visualization
                 if (selectedAlgorithm == AlgorithmChoice.JumpPointSearch &&
                     scenario == ScenarioType.DS3_WeightedTerrain)
                 {
-                    Debug.LogWarning("[Visualizer] JPS nie wspiera weighted gridów (DS3). Przełączam na A*.");
-                    return new List<IPathfindingAlgorithm> { new AStarAlgorithm() };
+                    Debug.LogWarning("[Visualizer] JPS nie wspiera weighted gridów (DS3). Pomijam ten scenariusz dla JPS.");
+                    return new List<IPathfindingAlgorithm>();
                 }
                 return new List<IPathfindingAlgorithm> { CreateSelectedAlgorithm() };
             }
@@ -756,7 +1435,7 @@ namespace Pathfinding.Visualization
             int height = _gridMap.Height;
             _basemapRenderers = new SpriteRenderer[width, height];
             _spawnedObstacles = new GameObject[width, height];
-            _spawnedDynamicChanges = new GameObject[width, height];
+            _spawnedChangeMarkers = new GameObject[width, height];
 
             for (int x = 0; x < width; x++)
             {
@@ -772,7 +1451,8 @@ namespace Pathfinding.Visualization
                     _basemapRenderers[x, y] = sr;
 
                     // Obstacles
-                    if (!_gridMap.IsWalkable(x, y) && obstacleSprite != null)
+                    Sprite sprite = GetObstacleSpriteForCell(x, y);
+                    if (!_gridMap.IsWalkable(x, y) && sprite != null)
                     {
                         GameObject obs = new GameObject($"Obstacle_{x}_{y}");
                         obs.transform.position = new Vector3(x, y, -0.1f);
@@ -780,7 +1460,7 @@ namespace Pathfinding.Visualization
                         obs.transform.localScale = new Vector3(0.95f, 0.95f, 1f);
 
                         SpriteRenderer obsSr = obs.AddComponent<SpriteRenderer>();
-                        obsSr.sprite = obstacleSprite;
+                        obsSr.sprite = sprite;
                         obsSr.sortingOrder = 1; // Wyżej niż basemap
                         
                         _spawnedObstacles[x, y] = obs;
@@ -798,7 +1478,7 @@ namespace Pathfinding.Visualization
 
         /// <summary>
         /// Odświeża kolory basemapy zgodnie z aktualnym stanem GridMap.
-        /// Wywoływane po zmianach dynamicznych.
+        /// Wywoływane po zmianach scenariusza.
         /// </summary>
         private void RefreshBasemapColors()
         {
@@ -811,7 +1491,8 @@ namespace Pathfinding.Visualization
                     // Aktualizacja przeszkód
                     if (!_gridMap.IsWalkable(x, y))
                     {
-                        if (_spawnedObstacles[x, y] == null && obstacleSprite != null)
+                        Sprite sprite = GetObstacleSpriteForCell(x, y);
+                        if (_spawnedObstacles[x, y] == null && sprite != null)
                         {
                             GameObject obs = new GameObject($"Obstacle_{x}_{y}");
                             obs.transform.position = new Vector3(x, y, -0.1f);
@@ -819,22 +1500,28 @@ namespace Pathfinding.Visualization
                             obs.transform.localScale = new Vector3(0.95f, 0.95f, 1f);
 
                             SpriteRenderer obsSr = obs.AddComponent<SpriteRenderer>();
-                            obsSr.sprite = obstacleSprite;
+                            obsSr.sprite = sprite;
                             obsSr.sortingOrder = 1; // Wyżej niż basemap
 
                             _spawnedObstacles[x, y] = obs;
                         }
-                        if (_spawnedObstacles[x, y] != null) _spawnedObstacles[x, y].SetActive(true);
+                        if (_spawnedObstacles[x, y] != null)
+                        {
+                            SpriteRenderer obsSr = _spawnedObstacles[x, y].GetComponent<SpriteRenderer>();
+                            if (obsSr != null && sprite != null)
+                                obsSr.sprite = sprite;
+                            _spawnedObstacles[x, y].SetActive(true);
+                        }
                     }
                     else
                     {
                         if (_spawnedObstacles[x, y] != null) _spawnedObstacles[x, y].SetActive(false);
                     }
 
-                    // Reset dynamic changes objects
-                    if (_spawnedDynamicChanges[x, y] != null)
+                    // Reset marker objects
+                    if (_spawnedChangeMarkers[x, y] != null)
                     {
-                        _spawnedDynamicChanges[x, y].SetActive(false);
+                        _spawnedChangeMarkers[x, y].SetActive(false);
                     }
                 }
             }
@@ -848,36 +1535,36 @@ namespace Pathfinding.Visualization
             Pathfinding.Core.PathfindingResult result,
             Vector2Int startPos, Vector2Int targetPos,
             string algorithmName,
-            List<Vector2Int> dynamicChanges)
+            List<Vector2Int> scenarioChanges)
         {
             _isVisualizing = true;
 
             // Zresetuj podświetlenia (zachowaj aktualny stan ścian)
             RefreshBasemapColors();
 
-            // Pokaż zmiany dynamiczne (prefaby na wierzchu)
-            if (dynamicChanges != null)
+            // Pokaż zmienione pola scenariusza (prefaby na wierzchu)
+            if (scenarioChanges != null)
             {
-                foreach (var pos in dynamicChanges)
+                foreach (var pos in scenarioChanges)
                 {
                     if (pos.x >= 0 && pos.x < _gridMap.Width && pos.y >= 0 && pos.y < _gridMap.Height)
                     {
-                        if (_spawnedDynamicChanges[pos.x, pos.y] == null && dynamicChangeSprite != null)
+                        if (_spawnedChangeMarkers[pos.x, pos.y] == null && changeMarkerSprite != null)
                         {
-                            GameObject dyn = new GameObject($"DynamicChange_{pos.x}_{pos.y}");
+                            GameObject dyn = new GameObject($"ChangeMarker_{pos.x}_{pos.y}");
                             dyn.transform.position = new Vector3(pos.x, pos.y, -0.2f); // Bliżej kamery
                             dyn.transform.parent = this.transform;
                             dyn.transform.localScale = new Vector3(0.95f, 0.95f, 1f);
 
                             SpriteRenderer dynSr = dyn.AddComponent<SpriteRenderer>();
-                            dynSr.sprite = dynamicChangeSprite;
+                            dynSr.sprite = changeMarkerSprite;
                             dynSr.sortingOrder = 2; // Najwyżej w hierarchii 2D (poza agentem)
 
-                            _spawnedDynamicChanges[pos.x, pos.y] = dyn;
+                            _spawnedChangeMarkers[pos.x, pos.y] = dyn;
                         }
-                        if (_spawnedDynamicChanges[pos.x, pos.y] != null)
+                        if (_spawnedChangeMarkers[pos.x, pos.y] != null)
                         {
-                            _spawnedDynamicChanges[pos.x, pos.y].SetActive(true);
+                            _spawnedChangeMarkers[pos.x, pos.y].SetActive(true);
                         }
                     }
                 }
@@ -956,9 +1643,9 @@ namespace Pathfinding.Visualization
         //  GENERACJA MAP PROCEDURALNYCH
         // ─────────────────────────────────────────────────────────
 
-        private bool GenerateProceduralMap()
+        private IMapGenerator CreateMapGenerator(MapTopology topology)
         {
-            IMapGenerator generator = mapSource switch
+            return topology switch
             {
                 MapTopology.OpenField => new OpenFieldGenerator(),
                 MapTopology.Maze => new MazeGenerator(),
@@ -966,6 +1653,83 @@ namespace Pathfinding.Visualization
                 MapTopology.ScatteredBlock => new ScatteredBlockGenerator(),
                 _ => null
             };
+        }
+
+        private List<MapTopology> GetSuiteTopologies()
+        {
+            return new List<MapTopology>
+            {
+                MapTopology.OpenField,
+                MapTopology.Maze,
+                MapTopology.RoomCorridor,
+                MapTopology.ScatteredBlock
+            };
+        }
+
+        private IEnumerable<float> GetSuiteDensities()
+        {
+            if (suiteDensities == null || suiteDensities.Length == 0)
+            {
+                yield return Mathf.Clamp(proceduralDensity, 0f, 0.5f);
+                yield break;
+            }
+
+            foreach (float density in suiteDensities)
+                yield return Mathf.Clamp(density, 0f, 0.5f);
+        }
+
+        private IEnumerable<int> GetSuiteSeeds()
+        {
+            if (suiteSeeds == null || suiteSeeds.Length == 0)
+            {
+                yield return randomSeed;
+                yield break;
+            }
+
+            foreach (int seed in suiteSeeds)
+                yield return seed;
+        }
+
+        private IEnumerable<(int width, int height)> GetSuiteMapSizes()
+        {
+            if (!useSuiteMapSizes || suiteMapSizes == null || suiteMapSizes.Length == 0)
+            {
+                yield return (Mathf.Max(10, proceduralMapWidth), Mathf.Max(10, proceduralMapHeight));
+                yield break;
+            }
+
+            HashSet<int> uniqueSizes = new HashSet<int>();
+            foreach (int rawSize in suiteMapSizes)
+            {
+                int size = Mathf.Clamp(rawSize, 10, 500);
+                if (uniqueSizes.Add(size))
+                    yield return (size, size);
+            }
+        }
+
+        private List<TestCase> GenerateTestCasesForMap(GridMap map, int seed)
+        {
+            var selector = new TestPointSelector(seed);
+            var enhanced = selector.GenerateTestCases(map, pairsPerBucket, unreachablePairs);
+            var generated = new List<TestCase>(enhanced.Count);
+
+            foreach (var etc in enhanced)
+            {
+                generated.Add(new TestCase
+                {
+                    startX = etc.StartX,
+                    startY = etc.StartY,
+                    targetX = etc.TargetX,
+                    targetY = etc.TargetY
+                });
+            }
+
+            return generated;
+        }
+
+        private bool GenerateProceduralMap()
+        {
+            IMapGenerator generator = CreateMapGenerator(mapSource);
 
             if (generator == null)
             {
@@ -973,8 +1737,8 @@ namespace Pathfinding.Visualization
                 return false;
             }
 
-            // Użyj rozmiarów z istniejącej mapy (32x20) lub z pola
-            int w = 32, h = 20;
+            int w = proceduralMapWidth;
+            int h = proceduralMapHeight;
             _gridMap = generator.Generate(w, h, proceduralDensity, randomSeed);
             Debug.Log($"[Visualizer] Wygenerowano mapę proceduralną: {generator.TopologyName} " +
                       $"{w}x{h}, gęstość={proceduralDensity:P0}, seed={randomSeed}");

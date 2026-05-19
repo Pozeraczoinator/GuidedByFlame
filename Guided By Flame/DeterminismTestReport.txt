@@ -1,0 +1,106 @@
+RAPORT TESTÓW DETERMINIZMU
+Data: 2026-05-19 12:28:39
+Powtórzeń per test: 100
+────────────────────────────────────────────────────────────
+
+── ZESTAW 1: POWTARZALNOŚĆ ──
+✅ PASS: Repeatability_AStar — PathFound=True, Nodes=176, Length=36,55, Steps=32
+✅ PASS: Repeatability_Dijkstra — PathFound=True, Nodes=471, Length=36,55, Steps=32
+✅ PASS: Repeatability_GreedyBestFirst — PathFound=True, Nodes=41, Length=40,31, Steps=37
+✅ PASS: Repeatability_CustomGreedy — PathFound=True, Nodes=39, Length=39,38, Steps=34
+✅ PASS: Repeatability_JumpPointSearch — PathFound=True, Nodes=305, Length=42,41, Steps=42
+
+── ZESTAW 2: KONSYSTENCJA OPTYMALNYCH ──
+✅ PASS: OptimalConsistency_(1, 1)→(28, 17)_AStarVsDijkstra — A*=36,5540, Dijkstra=36,5540
+✅ PASS: OptimalConsistency_(1, 1)→(28, 17)_JPSvsAStar — [INFO] Różnica PathLength (Corner Cutting): A*=36,5540, JPS=42,4140
+✅ PASS: OptimalConsistency_(1, 18)→(30, 1)_AStarVsDijkstra — A*=40,7260, Dijkstra=40,7260
+✅ PASS: OptimalConsistency_(1, 18)→(30, 1)_JPSvsAStar — [INFO] Różnica PathLength (Corner Cutting): A*=40,7260, JPS=46,0000
+✅ PASS: OptimalConsistency_(15, 10)→(3, 3)_AStarVsDijkstra — A*=16,6560, Dijkstra=16,6560
+✅ PASS: OptimalConsistency_(15, 10)→(3, 3)_JPSvsAStar — [INFO] Różnica PathLength (Corner Cutting): A*=16,6560, JPS=19,0000
+
+── ZESTAW 3: TOPOLOGIE MAP ──
+✅ PASS: Topology_Maze_AStar — PathFound=True, Nodes=138
+✅ PASS: Topology_Maze_Dijkstra — PathFound=True, Nodes=427
+✅ PASS: Topology_Maze_GreedyBestFirst — PathFound=True, Nodes=40
+✅ PASS: Topology_Maze_CustomGreedy — PathFound=True, Nodes=40
+✅ PASS: Topology_Maze_JumpPointSearch — PathFound=True, Nodes=353
+✅ PASS: Topology_RoomCorridor_AStar — PathFound=True, Nodes=177
+✅ PASS: Topology_RoomCorridor_Dijkstra — PathFound=True, Nodes=283
+✅ PASS: Topology_RoomCorridor_GreedyBestFirst — PathFound=True, Nodes=48
+✅ PASS: Topology_RoomCorridor_CustomGreedy — PathFound=True, Nodes=116
+✅ PASS: Topology_RoomCorridor_JumpPointSearch — PathFound=True, Nodes=156
+✅ PASS: Topology_ScatteredBlock_AStar — PathFound=True, Nodes=79
+✅ PASS: Topology_ScatteredBlock_Dijkstra — PathFound=True, Nodes=508
+✅ PASS: Topology_ScatteredBlock_GreedyBestFirst — PathFound=True, Nodes=39
+✅ PASS: Topology_ScatteredBlock_CustomGreedy — PathFound=True, Nodes=35
+✅ PASS: Topology_ScatteredBlock_JumpPointSearch — PathFound=True, Nodes=355
+
+── ZESTAW 4: WAGI TERENU (DS3) ──
+✅ PASS: WeightedTerrain_AStar — PathFound=True, Nodes=126, Length=37,1400
+✅ PASS: WeightedTerrain_Dijkstra — PathFound=True, Nodes=437, Length=37,1400
+✅ PASS: WeightedTerrain_GreedyBestFirst — PathFound=True, Nodes=41, Length=40,3120
+✅ PASS: WeightedTerrain_CustomGreedy — PathFound=True, Nodes=39, Length=39,3820
+
+── ZESTAW 5: EDGE CASES ──
+✅ PASS: EdgeCase_StartEqualsTarget_AStar — PathFound=True, Length=0,0000
+✅ PASS: EdgeCase_Adjacent_AStar — PathFound=True, Steps=1, Length=1,00
+✅ PASS: EdgeCase_CorridorTurn_AStar — PathFound=True, Path=[(2,1) -> (3,1) -> (3,2) -> (3,3)]
+✅ PASS: EdgeCase_NoPath_AStar — PathFound=False, ExploredNodes=631
+✅ PASS: EdgeCase_NoCornerCutting_AStar — PathFound=False
+✅ PASS: EdgeCase_StartEqualsTarget_Dijkstra — PathFound=True, Length=0,0000
+✅ PASS: EdgeCase_Adjacent_Dijkstra — PathFound=True, Steps=1, Length=1,00
+✅ PASS: EdgeCase_CorridorTurn_Dijkstra — PathFound=True, Path=[(2,1) -> (3,1) -> (3,2) -> (3,3)]
+✅ PASS: EdgeCase_NoPath_Dijkstra — PathFound=False, ExploredNodes=631
+✅ PASS: EdgeCase_NoCornerCutting_Dijkstra — PathFound=False
+✅ PASS: EdgeCase_StartEqualsTarget_GreedyBestFirst — PathFound=True, Length=0,0000
+✅ PASS: EdgeCase_Adjacent_GreedyBestFirst — PathFound=True, Steps=1, Length=1,00
+✅ PASS: EdgeCase_CorridorTurn_GreedyBestFirst — PathFound=True, Path=[(2,1) -> (3,1) -> (3,2) -> (3,3)]
+✅ PASS: EdgeCase_NoPath_GreedyBestFirst — PathFound=False, ExploredNodes=631
+✅ PASS: EdgeCase_NoCornerCutting_GreedyBestFirst — PathFound=False
+✅ PASS: EdgeCase_StartEqualsTarget_CustomGreedy — PathFound=True, Length=0,0000
+✅ PASS: EdgeCase_Adjacent_CustomGreedy — PathFound=True, Steps=1, Length=1,00
+✅ PASS: EdgeCase_CorridorTurn_CustomGreedy — PathFound=True, Path=[(2,1) -> (3,1) -> (3,2) -> (3,3)]
+✅ PASS: EdgeCase_NoPath_CustomGreedy — PathFound=False, ExploredNodes=631
+✅ PASS: EdgeCase_NoCornerCutting_CustomGreedy — PathFound=False
+✅ PASS: EdgeCase_StartEqualsTarget_JumpPointSearch — PathFound=True, Length=0,0000
+✅ PASS: EdgeCase_Adjacent_JumpPointSearch — PathFound=True, Steps=1, Length=1,00
+✅ PASS: EdgeCase_CorridorTurn_JumpPointSearch — PathFound=True, Path=[(2,1) -> (3,1) -> (3,2) -> (3,3)]
+✅ PASS: EdgeCase_NoPath_JumpPointSearch — PathFound=False, ExploredNodes=631
+✅ PASS: EdgeCase_NoCornerCutting_JumpPointSearch — PathFound=False
+
+── ZESTAW 6: GEOMETRIA ŚCIEŻKI ──
+✅ PASS: PathGeometry_Simple_AStar — Steps=32, Length=36,55
+✅ PASS: PathGeometry_Simple_Dijkstra — Steps=32, Length=36,55
+✅ PASS: PathGeometry_Simple_GreedyBestFirst — Steps=37, Length=40,31
+✅ PASS: PathGeometry_Simple_CustomGreedy — Steps=34, Length=39,38
+✅ PASS: PathGeometry_Simple_JumpPointSearch — Steps=42, Length=42,41
+✅ PASS: PathGeometry_DS2Snapshot_AStar — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS2Snapshot_Dijkstra — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS2Snapshot_GreedyBestFirst — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS2Snapshot_CustomGreedy — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS2Snapshot_JumpPointSearch — Steps=15, Length=16,24
+✅ PASS: PathGeometry_CornerBlocked_AStar — No path
+✅ PASS: PathGeometry_CornerBlocked_Dijkstra — No path
+✅ PASS: PathGeometry_CornerBlocked_GreedyBestFirst — No path
+✅ PASS: PathGeometry_CornerBlocked_CustomGreedy — No path
+✅ PASS: PathGeometry_CornerBlocked_JumpPointSearch — No path
+✅ PASS: DS2_Snapshot_Determinism — Seed=123
+
+── ZESTAW 6: PEŁNA ŚCIEŻKA ──
+✅ PASS: FullPath_Simple_AStar — Steps=34, Runs=100
+✅ PASS: FullPath_Simple_Dijkstra — Steps=34, Runs=100
+✅ PASS: FullPath_Simple_GreedyBestFirst — Steps=39, Runs=100
+✅ PASS: FullPath_Simple_CustomGreedy — Steps=36, Runs=100
+✅ PASS: FullPath_Simple_JumpPointSearch — Steps=45, Runs=100
+✅ PASS: FullPath_Maze_AStar — Steps=33, Runs=100
+✅ PASS: FullPath_Maze_Dijkstra — Steps=33, Runs=100
+✅ PASS: FullPath_Maze_GreedyBestFirst — Steps=43, Runs=100
+✅ PASS: FullPath_Maze_CustomGreedy — Steps=45, Runs=100
+✅ PASS: FullPath_Maze_JumpPointSearch — Steps=44, Runs=100
+✅ PASS: FullPath_Rooms_AStar — Steps=36, Runs=100
+✅ PASS: FullPath_Rooms_Dijkstra — Steps=36, Runs=100
+✅ PASS: FullPath_Rooms_GreedyBestFirst — Steps=39, Runs=100
+✅ PASS: FullPath_Rooms_CustomGreedy — Steps=39, Runs=100
+✅ PASS: FullPath_Rooms_JumpPointSearch — Steps=40, Runs=100
+════════════════════════════════════════════════════════════
+WYNIKI: 86 PASSED / 0 FAILED

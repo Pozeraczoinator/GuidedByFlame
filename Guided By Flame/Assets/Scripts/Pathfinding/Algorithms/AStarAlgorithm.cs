@@ -78,7 +78,8 @@ namespace Pathfinding.Algorithms
                 Vector2Int currentPos = new Vector2Int(currentNode.X, currentNode.Y);
                 closedSet.Add(currentPos);
                 result.ExploredNodes++;
-                result.ExploredNodesHistory.Add(currentPos);
+                if (PathfindingRuntimeOptions.RecordExploredNodesHistory)
+                    result.ExploredNodesHistory.Add(currentPos);
 
                 if (currentPos == targetPos)
                 {
@@ -99,7 +100,7 @@ namespace Pathfinding.Algorithms
 
                     // Ortogonalnie koszt 10, przekątna 14. Zakładamy grid 8-kierunkowy.
                     // DS3: Uwzględniamy wagę terenu (GetMovementCost) — koszt wejścia na pole sąsiada.
-                    // Na mapach bez wag (DS1/DS2/Static) GetMovementCost() zwraca 1.0f → brak zmiany.
+                    // Na mapach bez wag (DS2/Static) GetMovementCost() zwraca 1.0f → brak zmiany.
                     float terrainCost = grid.GetMovementCost(neighbor.X, neighbor.Y);
                     int moveCostToNeighbor = currentNode.GCost + (int)(GetDistance(currentNode, neighbor) * terrainCost);
                     
