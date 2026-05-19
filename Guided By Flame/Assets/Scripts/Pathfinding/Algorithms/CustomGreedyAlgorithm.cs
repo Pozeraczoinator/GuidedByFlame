@@ -100,7 +100,8 @@ namespace Pathfinding.Algorithms
                 Vector2Int currentPos = new Vector2Int(currentNode.X, currentNode.Y);
                 closedSet.Add(currentPos);
                 result.ExploredNodes++;
-                result.ExploredNodesHistory.Add(currentPos);
+                if (PathfindingRuntimeOptions.RecordExploredNodesHistory)
+                    result.ExploredNodesHistory.Add(currentPos);
 
                 if (currentPos == targetPos)
                 {

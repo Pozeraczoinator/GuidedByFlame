@@ -5,6 +5,7 @@ using System.Text;
 using UnityEngine;
 using Pathfinding.Core;
 using Pathfinding.Algorithms;
+using Pathfinding.Benchmark;
 
 namespace Pathfinding.Tests
 {
@@ -65,7 +66,10 @@ namespace Pathfinding.Tests
             // ─── Zestaw 5: Edge cases ───
             RunEdgeCaseTests();
 
-            // ─── Zestaw 6: Determinizm pełnej ścieżki ───
+            // ─── Zestaw 6: Poprawność geometrii ścieżki ───
+            RunPathValidityTests();
+
+            // ─── Zestaw 7: Determinizm pełnej ścieżki ───
             RunFullPathDeterminismTests();
 
             // ─── Podsumowanie ───
@@ -444,6 +448,23 @@ namespace Pathfinding.Tests
                         $"PathFound={result.PathFound}, Steps={result.Path?.Count ?? 0}, Length={result.PathLength:F2}");
                 }
 
+                // Test: wąski korytarz z wymuszonym skrętem, typowy dla map Maze.
+                {
+                    GridMap corridorTurn = CreateCorridorTurnMap();
+                    Vector2Int start = new Vector2Int(1, 1);
+                    Vector2Int target = new Vector2Int(3, 3);
+                    var result = algo.FindPath(corridorTurn, start, target);
+
+                    string geometryFail = "";
+                    bool validGeometry = result.PathFound &&
+                        IsPathGeometryValid(corridorTurn, start, result.Path, out geometryFail);
+
+                    RecordResult($"EdgeCase_CorridorTurn_{algo.AlgorithmName}",
+                        validGeometry,
+                        result.PathFound ? geometryFail : "Nie znalazł ścieżki w korytarzu ze skrętem.",
+                        $"PathFound={result.PathFound}, Path={FormatPath(result.Path)}");
+                }
+
                 // Test: brak ścieżki (cel otoczony ścianami)
                 {
                     GridMap isolated = CreateIsolatedMap();
@@ -455,11 +476,66 @@ namespace Pathfinding.Tests
                         result.PathFound ? "Znalazł ścieżkę do izolowanego pola!" : "",
                         $"PathFound={result.PathFound}, ExploredNodes={result.ExploredNodes}");
                 }
+
+                // Test: zakaz przejścia po przekątnej między dwoma przeszkodami.
+                // Układ 2x2, gdzie 1=przeszkoda, 0=wolne: 01 / 10.
+                {
+                    GridMap cornerBlocked = CreateDiagonalCornerBlockedMap();
+                    Vector2Int start = new Vector2Int(0, 0);
+                    Vector2Int target = new Vector2Int(1, 1);
+                    var result = algo.FindPath(cornerBlocked, start, target);
+
+                    RecordResult($"EdgeCase_NoCornerCutting_{algo.AlgorithmName}",
+                        !result.PathFound,
+                        result.PathFound ? $"Algorytm przeszedł po zabronionej przekątnej: {FormatPath(result.Path)}" : "",
+                        $"PathFound={result.PathFound}");
+                }
             }
         }
 
         // ─────────────────────────────────────────────────────────
-        //  ZESTAW 6: DETERMINIZM PEŁNEJ ŚCIEŻKI (STEP-BY-STEP)
+        //  ZESTAW 6: POPRAWNOŚĆ GEOMETRII ŚCIEŻKI
+        // ─────────────────────────────────────────────────────────
+
+        private void RunPathValidityTests()
+        {
+            Debug.Log("── Zestaw 6: Poprawność geometrii ścieżki ──");
+            _report.AppendLine("\n── ZESTAW 6: GEOMETRIA ŚCIEŻKI ──");
+
+            GridMap ds2Snapshot = CreateDS2SnapshotMap(42, out Vector2Int ds2Start, out Vector2Int ds2Target);
+
+            var maps = new (string name, GridMap map, Vector2Int start, Vector2Int target)[]
+            {
+                ("Simple", CreateTestMap(), new Vector2Int(1, 1), new Vector2Int(28, 17)),
+                ("DS2Snapshot", ds2Snapshot, ds2Start, ds2Target),
+                ("CornerBlocked", CreateDiagonalCornerBlockedMap(), new Vector2Int(0, 0), new Vector2Int(1, 1)),
+            };
+
+            foreach (var item in maps)
+            {
+                foreach (var algo in GetAllAlgorithms())
+                {
+                    var result = algo.FindPath(item.map, item.start, item.target);
+                    string failReason = "";
+                    bool valid = !result.PathFound || IsPathGeometryValid(item.map, item.start, result.Path, out failReason);
+
+                    RecordResult($"PathGeometry_{item.name}_{algo.AlgorithmName}",
+                        valid,
+                        failReason,
+                        result.PathFound ? $"Steps={result.Path.Count}, Length={result.PathLength:F2}" : "No path");
+                }
+            }
+
+            GridMap ds2A = CreateDS2SnapshotMap(123, out _, out _);
+            GridMap ds2B = CreateDS2SnapshotMap(123, out _, out _);
+            RecordResult("DS2_Snapshot_Determinism",
+                MapsHaveSameWalkability(ds2A, ds2B),
+                "Ten sam seed DS2 wygenerował inny układ przeszkód.",
+                "Seed=123");
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  ZESTAW 7: DETERMINIZM PEŁNEJ ŚCIEŻKI (STEP-BY-STEP)
         // ─────────────────────────────────────────────────────────
 
         /// <summary>
@@ -606,6 +682,41 @@ namespace Pathfinding.Tests
             return new GridMap(walkable);
         }
 
+        private GridMap CreateDiagonalCornerBlockedMap()
+        {
+            bool[,] walkable = new bool[2, 2];
+            walkable[0, 0] = true;
+            walkable[1, 0] = false;
+            walkable[0, 1] = false;
+            walkable[1, 1] = true;
+            return new GridMap(walkable);
+        }
+
+        private GridMap CreateCorridorTurnMap()
+        {
+            bool[,] walkable = new bool[5, 5];
+            walkable[1, 1] = true;
+            walkable[2, 1] = true;
+            walkable[3, 1] = true;
+            walkable[3, 2] = true;
+            walkable[3, 3] = true;
+            return new GridMap(walkable);
+        }
+
+        private GridMap CreateDS2SnapshotMap(int seed, out Vector2Int start, out Vector2Int target)
+        {
+            GridMap map = new GridMap(12, 12, true);
+            start = new Vector2Int(1, 1);
+            target = new Vector2Int(10, 10);
+
+            var manager = new MovingObstacleManager(seed);
+            manager.GenerateObstacles(map, 4, start, target, 3);
+            manager.StepAll(map);
+            manager.VerifyObstaclePositions(map);
+
+            return map;
+        }
+
         /// <summary>
         /// Znajduje najbliższe walkable pole do podanej pozycji.
         /// </summary>
@@ -626,6 +737,73 @@ namespace Pathfinding.Tests
                 }
             }
             return new Vector2Int(-1, -1);
+        }
+
+        private bool IsPathGeometryValid(GridMap map, Vector2Int start, List<Vector2Int> path, out string failReason)
+        {
+            failReason = "";
+            Vector2Int current = start;
+
+            if (!map.IsWalkable(start))
+            {
+                failReason = $"Start {start} nie jest walkable.";
+                return false;
+            }
+
+            foreach (Vector2Int step in path)
+            {
+                if (!map.IsWalkable(step))
+                {
+                    failReason = $"Krok {step} wchodzi w przeszkodę. Path={FormatPath(path)}";
+                    return false;
+                }
+
+                int dx = step.x - current.x;
+                int dy = step.y - current.y;
+
+                if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1 || (dx == 0 && dy == 0))
+                {
+                    failReason = $"Niepoprawny skok {current}->{step}. Path={FormatPath(path)}";
+                    return false;
+                }
+
+                if (dx != 0 && dy != 0)
+                {
+                    Vector2Int horizontal = new Vector2Int(current.x + dx, current.y);
+                    Vector2Int vertical = new Vector2Int(current.x, current.y + dy);
+
+                    if (!map.IsWalkable(horizontal) || !map.IsWalkable(vertical))
+                    {
+                        failReason = $"Ścinanie rogu {current}->{step}; boczne pola: {horizontal}={map.IsWalkable(horizontal)}, {vertical}={map.IsWalkable(vertical)}. Path={FormatPath(path)}";
+                        return false;
+                    }
+                }
+
+                current = step;
+            }
+
+            return true;
+        }
+
+        private bool MapsHaveSameWalkability(GridMap a, GridMap b)
+        {
+            if (a.Width != b.Width || a.Height != b.Height)
+                return false;
+
+            for (int x = 0; x < a.Width; x++)
+                for (int y = 0; y < a.Height; y++)
+                    if (a.IsWalkable(x, y) != b.IsWalkable(x, y))
+                        return false;
+
+            return true;
+        }
+
+        private string FormatPath(List<Vector2Int> path)
+        {
+            if (path == null || path.Count == 0)
+                return "[]";
+
+            return "[" + string.Join(" -> ", path.Select(p => $"({p.x},{p.y})")) + "]";
         }
 
         private void RecordResult(string testName, bool passed, string failReason, string info)

@@ -24,7 +24,6 @@ Pathfinding/
 │   └── JumpPointSearchAlgorithm.cs# JPS na uniform gridzie
 │
 ├── Benchmark/                     # Infrastruktura pomiarowa
-│   ├── DynamicObstacleManager.cs  # DS1: toggle ścian
 │   ├── MovingObstacleManager.cs   # DS2: patrol NPC (RandomWalk 1-3)
 │   ├── WeightedTerrainManager.cs  # DS3: dynamiczne wagi (Random/Radial/Linear)
 │   ├── TestPointSelector.cs       # Distance bucketing + BFS reachability
@@ -110,9 +109,10 @@ Pathfinding/
 | Scenariusz | Opis |
 |------------|------|
 | **Static** | Mapa niezmienna |
-| **DS1** | Toggle ścian między testami |
 | **DS2** | Patrol NPC (RandomWalk 1-3 kroków, ping-pong) |
 | **DS3** | Dynamiczne wagi (Random/Radial/Linear) |
+| **DS4** | Dodawanie/usuwanie przeszkód na bazowej trasie NPC |
+| **DS5** | Deterministyczne bramy/drzwi otwierane lub zamykane na trasie |
 
 **JPS jest WYKLUCZONY z DS3** (nie wspiera weighted gridów).
 
@@ -167,9 +167,10 @@ ExploredNodes;PathLength;DirectionChanges;PathSmoothness;CPUTemperature
 |----------|----------|-------------|
 | `benchmarkIterations` | 30 | PathfindingVisualizer |
 | `randomSeed` | 42 | PathfindingVisualizer, BenchmarkManager |
-| `dynamicChangesCount` | 5 | PathfindingVisualizer |
 | `movingObstacleCount` | 3 | PathfindingVisualizer |
 | `patrolLength` | 6 | PathfindingVisualizer |
+| `pathObstructionChanges` | 6 | PathfindingVisualizer |
+| `gateToggleCount` | 4 | PathfindingVisualizer |
 | `pairsPerBucket` | 30 | PathfindingVisualizer |
 | `_greedyWeight` | 50.0f | CustomGreedyAlgorithm (konstruktor) |
 | `_turnPenalty` | 2 | CustomGreedyAlgorithm (konstruktor) |
