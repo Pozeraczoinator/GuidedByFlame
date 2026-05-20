@@ -33,7 +33,6 @@ namespace Pathfinding.Visualization
         private SerializedProperty _includeFileMapInFullSuite;
         private SerializedProperty _useDistanceBucketing;
         private SerializedProperty _pairsPerBucket;
-        private SerializedProperty _unreachablePairs;
         private SerializedProperty _movingObstacleCount;
         private SerializedProperty _patrolLength;
         private SerializedProperty _pathObstructionChanges;
@@ -88,7 +87,6 @@ namespace Pathfinding.Visualization
             _includeFileMapInFullSuite = serializedObject.FindProperty("includeFileMapInFullSuite");
             _useDistanceBucketing = serializedObject.FindProperty("useDistanceBucketing");
             _pairsPerBucket = serializedObject.FindProperty("pairsPerBucket");
-            _unreachablePairs = serializedObject.FindProperty("unreachablePairs");
             _movingObstacleCount = serializedObject.FindProperty("movingObstacleCount");
             _patrolLength = serializedObject.FindProperty("patrolLength");
             _pathObstructionChanges = serializedObject.FindProperty("pathObstructionChanges");
@@ -229,7 +227,6 @@ namespace Pathfinding.Visualization
             if (!allowFileInput || _useDistanceBucketing.boolValue)
             {
                 EditorGUILayout.PropertyField(_pairsPerBucket);
-                EditorGUILayout.PropertyField(_unreachablePairs);
             }
             else
             {

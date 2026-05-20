@@ -25,7 +25,7 @@ Pathfinding/
 │
 ├── Benchmark/                     # Infrastruktura pomiarowa
 │   ├── MovingObstacleManager.cs   # DS2: patrol NPC (RandomWalk 1-3)
-│   ├── TestPointSelector.cs       # Distance bucketing + BFS reachability
+│   ├── TestPointSelector.cs       # Bucketing po realnej długości ścieżki + deduplikacja
 │   ├── HardwareMonitor.cs         # Temp CPU (WMI), GC.Collect wrapper
 │   └── BatchGenerator.cs          # 4×4×4 = 64 mapy
 │
@@ -44,8 +44,7 @@ Pathfinding/
 │   ├── Architecture.md            # Ten plik
 │   └── AlgorithmsAnalysis.md      # Szczegółowa analiza algorytmów
 │
-├── BenchmarkManager.cs            # Headless benchmark runner
-└── PathfindingVisualizer.cs       # Unity MonoBehaviour z wizualizacją
+└── PathfindingVisualizer.cs       # Oficjalny runner benchmarków + Unity MonoBehaviour z wizualizacją
 ```
 
 ---
@@ -149,9 +148,11 @@ Od wersji `feature/pathfinding-audit-determinism`:
 ## 9. Format Wyjściowy CSV
 
 **Separator**: średnik (`;`)
-**23 kolumny**:
+**31 kolumn**:
 ```
 TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;
+MapTopology;MapSeed;MapDensity;MapWidth;MapHeight;
+DistanceBucket;EuclideanDistance;ReferenceShortestPathLength;
 PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;
 AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;
 AvgExecutionTicks;AvgGCAllocBytes;
@@ -165,7 +166,7 @@ ExploredNodes;PathLength;DirectionChanges;PathSmoothness;CPUTemperature
 | Parametr | Domyślna | Lokalizacja |
 |----------|----------|-------------|
 | `benchmarkIterations` | 30 | PathfindingVisualizer |
-| `randomSeed` | 42 | PathfindingVisualizer, BenchmarkManager |
+| `randomSeed` | 42 | PathfindingVisualizer |
 | `movingObstacleCount` | 3 | PathfindingVisualizer |
 | `patrolLength` | 6 | PathfindingVisualizer |
 | `pathObstructionChanges` | 6 | PathfindingVisualizer |

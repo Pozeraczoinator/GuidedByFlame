@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -90,7 +91,7 @@ namespace Pathfinding.Visualization
         [Range(1, 200)]
         public int benchmarkIterations = 30;
 
-        [Tooltip("Nazwa pliku wynikowego CSV (23 kolumny, separator: średnik).")]
+        [Tooltip("Nazwa pliku wynikowego CSV (31 kolumn, separator: średnik).")]
         public string outputFileName = "benchmark_results.csv";
 
         [Header("═══ Monitoring Sprzętowy ═══")]
@@ -144,16 +145,12 @@ namespace Pathfinding.Visualization
         public bool includeFileMapInFullSuite = false;
 
         [Header("═══ Distance Bucketing (Naukowy Dobór Punktów) ═══")]
-        [Tooltip("Czy generować test cases automatycznie z distance bucketing zamiast czytać z pliku CSV.")]
+        [Tooltip("Czy generować test cases automatycznie z bucketingiem po realnej długości najkrótszej ścieżki zamiast czytać z pliku CSV.")]
         public bool useDistanceBucketing = false;
 
-        [Tooltip("Ile par testowych na wiązkę dystansową (SHORT/MEDIUM/LONG).")]
+        [Tooltip("Ile osiągalnych par testowych na wiązkę dystansową (SHORT/MEDIUM/LONG).")]
         [Range(5, 100)]
         public int pairsPerBucket = 30;
-
-        [Tooltip("Ile par z nieosiągalnym celem (UNREACHABLE).")]
-        [Range(0, 20)]
-        public int unreachablePairs = 5;
 
         [Header("═══ DS1: Ruchome Przeszkody ═══")]
         [Tooltip("Liczba ruchomych przeszkód na mapie (patrol guards).")]
@@ -248,6 +245,9 @@ namespace Pathfinding.Visualization
         {
             public int startX, startY;
             public int targetX, targetY;
+            public string distanceBucket;
+            public float euclideanDistance;
+            public float referenceShortestPathLength;
         }
 
         private bool ShouldVisualize => !runWithoutVisualization && !runFullBenchmarkSuite;
@@ -481,6 +481,8 @@ namespace Pathfinding.Visualization
                             MeasureAlgorithm(algorithm, _gridMap, startPos, targetPos,
                                 testId, currentDensity, out metrics, out visualResult);
                         }
+
+                        ApplyTestCaseMetadata(metrics, tc);
 
                         if (monitorCPUTemperature)
                         {
@@ -735,6 +737,7 @@ namespace Pathfinding.Visualization
                         Pathfinding.Core.PathfindingResult ignoredVisualResult;
                         MeasureAlgorithm(algorithm, algorithmGrid, startPos, targetPos,
                             _suiteTestId, currentDensity, out BenchmarkMetrics metrics, out ignoredVisualResult);
+                        ApplyTestCaseMetadata(metrics, tc);
 
                         if (monitorCPUTemperature)
                             metrics.CPUTemperature = HardwareMonitor.GetCPUTemperature();
@@ -1384,15 +1387,62 @@ namespace Pathfinding.Visualization
                 var columns = lines[i].Split(',');
                 if (columns.Length >= 4)
                 {
+                    float euclideanDistance;
+                    float referenceShortestPathLength;
+                    ParseTestCaseDistances(columns, out euclideanDistance, out referenceShortestPathLength);
+
                     _testCases.Add(new TestCase
                     {
                         startX = int.Parse(columns[0].Trim()),
                         startY = int.Parse(columns[1].Trim()),
                         targetX = int.Parse(columns[2].Trim()),
-                        targetY = int.Parse(columns[3].Trim())
+                        targetY = int.Parse(columns[3].Trim()),
+                        distanceBucket = columns.Length >= 5 ? columns[4].Trim() : "Unknown",
+                        euclideanDistance = euclideanDistance,
+                        referenceShortestPathLength = referenceShortestPathLength
                     });
                 }
             }
+        }
+
+        private static void ParseTestCaseDistances(string[] columns, out float euclideanDistance,
+            out float referenceShortestPathLength)
+        {
+            euclideanDistance = -1f;
+            referenceShortestPathLength = -1f;
+
+            if (columns.Length == 9)
+            {
+                euclideanDistance = ParseCsvFloat(columns[5].Trim() + "." + columns[6].Trim());
+                referenceShortestPathLength = ParseCsvFloat(columns[7].Trim() + "." + columns[8].Trim());
+                return;
+            }
+
+            if (columns.Length >= 6)
+                euclideanDistance = ParseCsvFloat(columns[5]);
+
+            if (columns.Length >= 7)
+                referenceShortestPathLength = ParseCsvFloat(columns[6]);
+        }
+
+        private static float ParseCsvFloat(string value)
+        {
+            if (float.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
+                return parsed;
+
+            if (float.TryParse(value.Trim(), out parsed))
+                return parsed;
+
+            return -1f;
+        }
+
+        private static void ApplyTestCaseMetadata(BenchmarkMetrics metrics, TestCase testCase)
+        {
+            metrics.DistanceBucket = string.IsNullOrWhiteSpace(testCase.distanceBucket)
+                ? "Unknown"
+                : testCase.distanceBucket;
+            metrics.EuclideanDistance = testCase.euclideanDistance;
+            metrics.ReferenceShortestPathLength = testCase.referenceShortestPathLength;
         }
 
         // ─────────────────────────────────────────────────────────
@@ -1687,7 +1737,7 @@ namespace Pathfinding.Visualization
         private List<TestCase> GenerateTestCasesForMap(GridMap map, int seed)
         {
             var selector = new TestPointSelector(seed);
-            var enhanced = selector.GenerateTestCases(map, pairsPerBucket, unreachablePairs);
+            var enhanced = selector.GenerateTestCases(map, pairsPerBucket);
             var generated = new List<TestCase>(enhanced.Count);
 
             foreach (var etc in enhanced)
@@ -1697,7 +1747,10 @@ namespace Pathfinding.Visualization
                     startX = etc.StartX,
                     startY = etc.StartY,
                     targetX = etc.TargetX,
-                    targetY = etc.TargetY
+                    targetY = etc.TargetY,
+                    distanceBucket = etc.Bucket.ToString(),
+                    euclideanDistance = etc.EuclideanDistance,
+                    referenceShortestPathLength = etc.ShortestPathLength
                 });
             }
 
@@ -1729,7 +1782,7 @@ namespace Pathfinding.Visualization
         private void GenerateDistanceBucketedTestCases()
         {
             var selector = new TestPointSelector(randomSeed);
-            var enhanced = selector.GenerateTestCases(_gridMap, pairsPerBucket, unreachablePairs);
+            var enhanced = selector.GenerateTestCases(_gridMap, pairsPerBucket);
 
             _testCases.Clear();
             foreach (var etc in enhanced)
@@ -1737,7 +1790,10 @@ namespace Pathfinding.Visualization
                 _testCases.Add(new TestCase
                 {
                     startX = etc.StartX, startY = etc.StartY,
-                    targetX = etc.TargetX, targetY = etc.TargetY
+                    targetX = etc.TargetX, targetY = etc.TargetY,
+                    distanceBucket = etc.Bucket.ToString(),
+                    euclideanDistance = etc.EuclideanDistance,
+                    referenceShortestPathLength = etc.ShortestPathLength
                 });
             }
 
@@ -1746,7 +1802,7 @@ namespace Pathfinding.Visualization
             TestPointSelector.ExportToCsv(enhanced, csvPath);
             Debug.Log($"[Visualizer] Distance bucketing: {_testCases.Count} par " +
                       $"(SHORT: {pairsPerBucket}, MEDIUM: {pairsPerBucket}, " +
-                      $"LONG: {pairsPerBucket}, UNREACHABLE: {unreachablePairs})");
+                      $"LONG: {pairsPerBucket})");
         }
 
         // ─────────────────────────────────────────────────────────
@@ -1791,7 +1847,7 @@ namespace Pathfinding.Visualization
 
                         // Test cases z distance bucketing
                         var selector = new TestPointSelector(seed);
-                        var testCases = selector.GenerateTestCases(map, pairsPerBucket, unreachablePairs);
+                        var testCases = selector.GenerateTestCases(map, pairsPerBucket);
                         string csvName = Path.GetFileNameWithoutExtension(fileName) + "_TestCases.csv";
                         TestPointSelector.ExportToCsv(testCases, Path.Combine(topoDir, csvName));
 

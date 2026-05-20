@@ -119,6 +119,7 @@ namespace Pathfinding.Benchmark
             _obstacles.Clear();
             int attempts = 0;
             int maxAttempts = count * 50;
+            var occupiedPatrolCells = new HashSet<Vector2Int>();
 
             // Clampuj patrol length do 1-3
             patrolLength = Mathf.Clamp(patrolLength, 1, 3);
@@ -127,11 +128,14 @@ namespace Pathfinding.Benchmark
             {
                 attempts++;
                 var route = BuildRandomWalkRoute(grid, start, target, patrolLength);
-                if (route != null && route.Count >= 2)
+                if (route != null && route.Count >= 2 && IsRouteFree(route, occupiedPatrolCells))
                 {
                     var obstacle = new MovingObstacle(route);
                     obstacle.PlaceOnGrid(grid);
                     _obstacles.Add(obstacle);
+
+                    foreach (var pos in route)
+                        occupiedPatrolCells.Add(pos);
                 }
             }
 
@@ -268,7 +272,8 @@ namespace Pathfinding.Benchmark
                         var np = new Vector2Int(nx, ny);
                         if (grid.IsValidCoordinate(nx, ny) && grid.IsWalkable(nx, ny) &&
                             !visited.Contains(np) &&
-                            !IsNearPoint(np, start, 1) && !IsNearPoint(np, target, 1))
+                            !IsNearPoint(np, start, 1) && !IsNearPoint(np, target, 1) &&
+                            IsMoveAllowed(grid, cx, cy, d[0], d[1]))
                         {
                             candidates.Add(d);
                         }
@@ -294,6 +299,25 @@ namespace Pathfinding.Benchmark
                 return route;
             }
             return null;
+        }
+
+        private bool IsRouteFree(List<Vector2Int> route, HashSet<Vector2Int> occupiedPatrolCells)
+        {
+            foreach (var pos in route)
+            {
+                if (occupiedPatrolCells.Contains(pos))
+                    return false;
+            }
+
+            return true;
+        }
+
+        private bool IsMoveAllowed(GridMap grid, int x, int y, int dx, int dy)
+        {
+            if (dx == 0 || dy == 0)
+                return true;
+
+            return grid.IsWalkable(x + dx, y) && grid.IsWalkable(x, y + dy);
         }
 
         private bool IsNearPoint(Vector2Int a, Vector2Int b, int radius)

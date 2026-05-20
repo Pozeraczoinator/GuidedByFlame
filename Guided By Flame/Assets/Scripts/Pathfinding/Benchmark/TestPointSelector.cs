@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using UnityEngine;
@@ -9,29 +10,28 @@ namespace Pathfinding.Benchmark
 {
     /// <summary>
     /// Naukowy system doboru punktów startowych i końcowych dla benchmarków.
-    /// 
-    /// Implementuje Distance Bucketing — podział par (start, goal) na wiązki:
-    /// - SHORT:  0–33% maksymalnego dystansu (overhead algorytmu vs krótka ścieżka)
-    /// - MEDIUM: 33–66% maksymalnego dystansu (typowy scenariusz gry)
-    /// - LONG:   66–100% maksymalnego dystansu (pełne obciążenie, dominacja heurystyki)
-    /// 
+    ///
+    /// Implementuje distance bucketing na podstawie realnej długości najkrótszej ścieżki,
+    /// a nie samej odległości w linii prostej. Dzięki temu punkty w labiryntach,
+    /// pokojach i korytarzach są klasyfikowane według faktycznej trudności trasy.
+    ///
     /// Kluczowe cechy:
-    /// 1. BFS reachability check — gwarancja istnienia ścieżki
+    /// 1. Shortest-path reachability check — gwarancja istnienia ścieżki
     /// 2. Deterministyczny seed — powtarzalność eksperymentów
-    /// 3. Generacja par UNREACHABLE — testowanie worst-case
+    /// 3. Deduplication — brak powtarzających się par start-cel
     /// 4. Eksport do rozszerzonego formatu CSV
-    /// 
-    /// Złożoność generacji: O(pairsPerBucket × W×H) — BFS per para
+    ///
+    /// Złożoność generacji: O(attempts * W * H * log(W * H)).
+    /// Koszt dotyczy tylko generowania test cases, nie właściwego benchmarku algorytmów.
     /// </summary>
     public class TestPointSelector
     {
-        /// <summary>Kategoria dystansu pary testowej.</summary>
+        /// <summary>Kategoria realnej długości ścieżki.</summary>
         public enum DistanceBucket
         {
             Short,
             Medium,
-            Long,
-            Unreachable
+            Long
         }
 
         /// <summary>Rozszerzona struktura test case z metadanymi naukowymi.</summary>
@@ -41,12 +41,62 @@ namespace Pathfinding.Benchmark
             public int TargetX, TargetY;
             public DistanceBucket Bucket;
             public float EuclideanDistance;
-            public bool IsReachable;
+            public float ShortestPathLength;
 
             public override string ToString()
             {
-                return $"{StartX},{StartY},{TargetX},{TargetY},{Bucket},{EuclideanDistance:F2},{IsReachable}";
+                return string.Format(CultureInfo.InvariantCulture,
+                    "{0},{1},{2},{3},{4},{5:F2},{6:F3}",
+                    StartX, StartY, TargetX, TargetY, Bucket, EuclideanDistance, ShortestPathLength);
             }
+        }
+
+        private class DistanceNode : IHeapItem<DistanceNode>
+        {
+            public int X { get; }
+            public int Y { get; }
+            public float Cost { get; set; }
+
+            private int _heapIndex;
+
+            public DistanceNode(int x, int y)
+            {
+                X = x;
+                Y = y;
+                Cost = float.MaxValue;
+            }
+
+            public int HeapIndex
+            {
+                get => _heapIndex;
+                set => _heapIndex = value;
+            }
+
+            public int CompareTo(DistanceNode other)
+            {
+                int compare = Cost.CompareTo(other.Cost);
+                if (compare == 0)
+                {
+                    int posA = X * 10000 + Y;
+                    int posB = other.X * 10000 + other.Y;
+                    compare = posA.CompareTo(posB);
+                }
+                return -compare;
+            }
+        }
+
+        private struct ReachableDistance
+        {
+            public Vector2Int Position;
+            public float PathLength;
+        }
+
+        private struct CandidatePair
+        {
+            public Vector2Int Start;
+            public Vector2Int Target;
+            public float EuclideanDistance;
+            public float ShortestPathLength;
         }
 
         private readonly System.Random _rng;
@@ -57,18 +107,15 @@ namespace Pathfinding.Benchmark
         }
 
         /// <summary>
-        /// Generuje kompletny zestaw par testowych z distance bucketing.
+        /// Generuje kompletny zestaw osiągalnych par testowych z distance bucketing.
         /// </summary>
-        /// <param name="grid">Mapa na której operujemy</param>
-        /// <param name="pairsPerBucket">Ile par na wiązkę (SHORT/MEDIUM/LONG)</param>
-        /// <param name="unreachablePairs">Ile par nieosiągalnych</param>
-        /// <returns>Lista par z metadanymi</returns>
-        public List<EnhancedTestCase> GenerateTestCases(GridMap grid, int pairsPerBucket = 30, 
-            int unreachablePairs = 5)
+        /// <param name="grid">Mapa, na której operujemy.</param>
+        /// <param name="pairsPerBucket">Ile par na wiązkę SHORT/MEDIUM/LONG.</param>
+        /// <returns>Lista par z metadanymi.</returns>
+        public List<EnhancedTestCase> GenerateTestCases(GridMap grid, int pairsPerBucket = 30)
         {
             var result = new List<EnhancedTestCase>();
-            
-            // Zbierz wszystkie walkable pola
+
             var walkablePool = GetWalkablePositions(grid);
             if (walkablePool.Count < 2)
             {
@@ -76,199 +123,302 @@ namespace Pathfinding.Benchmark
                 return result;
             }
 
-            // Oblicz maksymalny dystans (przekątna mapy)
-            float maxDist = Mathf.Sqrt(grid.Width * grid.Width + grid.Height * grid.Height);
+            List<CandidatePair> candidates = CollectReachableCandidatePairs(grid, walkablePool, pairsPerBucket);
+            if (candidates.Count == 0)
+            {
+                Debug.LogWarning("[TestPointSelector] Nie znaleziono żadnej osiągalnej pary start-cel.");
+                return result;
+            }
+
+            float maxDist = GetMaxShortestPathLength(candidates);
             float shortMax = maxDist / 3f;
             float mediumMax = maxDist * 2f / 3f;
 
-            // Generuj pary dla każdej wiązki
-            result.AddRange(GenerateBucketPairs(grid, walkablePool, DistanceBucket.Short, 
-                0f, shortMax, pairsPerBucket));
-            result.AddRange(GenerateBucketPairs(grid, walkablePool, DistanceBucket.Medium, 
-                shortMax, mediumMax, pairsPerBucket));
-            result.AddRange(GenerateBucketPairs(grid, walkablePool, DistanceBucket.Long, 
-                mediumMax, maxDist + 1f, pairsPerBucket));
+            FillBucketsFromCandidates(candidates, result, pairsPerBucket, shortMax, mediumMax);
 
-            // Generuj pary nieosiągalne
-            result.AddRange(GenerateUnreachablePairs(grid, walkablePool, unreachablePairs));
-
-            Debug.Log($"[TestPointSelector] Wygenerowano {result.Count} par testowych " +
-                      $"(SHORT: {pairsPerBucket}, MEDIUM: {pairsPerBucket}, " +
-                      $"LONG: {pairsPerBucket}, UNREACHABLE: {unreachablePairs})");
+            Debug.Log($"[TestPointSelector] Wygenerowano {result.Count} osiągalnych par testowych " +
+                      $"(SHORT: {CountBucket(result, DistanceBucket.Short)}/{pairsPerBucket}, " +
+                      $"MEDIUM: {CountBucket(result, DistanceBucket.Medium)}/{pairsPerBucket}, " +
+                      $"LONG: {CountBucket(result, DistanceBucket.Long)}/{pairsPerBucket}). " +
+                      $"Bucketing bazuje na realnej długości najkrótszej ścieżki, max={maxDist:F3}.");
 
             return result;
         }
 
         /// <summary>
-        /// Generuje pary dla jednej wiązki dystansowej.
-        /// Powtarza losowanie aż zbierze wymaganą liczbę par z ważną osiągalnością.
+        /// Losuje punkty startowe i dla każdego liczy odległości do wszystkich osiągalnych celów jedną Dijkstrą.
+        /// Zebrana pula kandydatów służy potem do wyznaczenia realnego maxDist dla bucketów.
         /// </summary>
-        private List<EnhancedTestCase> GenerateBucketPairs(GridMap grid, List<Vector2Int> pool,
-            DistanceBucket bucket, float minDist, float maxDist, int count)
+        private List<CandidatePair> CollectReachableCandidatePairs(GridMap grid, List<Vector2Int> pool,
+            int pairsPerBucket)
         {
-            var pairs = new List<EnhancedTestCase>();
-            int attempts = 0;
-            int maxAttempts = count * 100;
+            var candidates = new List<CandidatePair>();
+            var usedPairs = new HashSet<string>();
+            int sourceAttempts = 0;
+            int maxSourceAttempts = Math.Max(40, pairsPerBucket * 8);
+            int maxPairsPerStart = Math.Max(8, pairsPerBucket / 2);
+            int targetCandidateCount = Math.Max(90, pairsPerBucket * 3 * 8);
 
-            while (pairs.Count < count && attempts < maxAttempts)
+            while (candidates.Count < targetCandidateCount && sourceAttempts < maxSourceAttempts)
             {
-                attempts++;
+                sourceAttempts++;
                 Vector2Int start = pool[_rng.Next(pool.Count)];
-                Vector2Int goal = pool[_rng.Next(pool.Count)];
-                if (start == goal) continue;
+                List<ReachableDistance> reachable = GetReachableDistances(grid, start);
+                if (reachable.Count <= 1)
+                    continue;
 
-                float dist = Vector2Int.Distance(start, goal);
-                if (dist < minDist || dist >= maxDist) continue;
+                AddFarthestReachableCandidate(candidates, usedPairs, start, reachable);
+                Shuffle(reachable);
 
-                // BFS reachability check
-                bool reachable = BFSReachabilityCheck(grid, start, goal);
-                if (!reachable) continue; // Dla bucketów SHORT/MEDIUM/LONG chcemy osiągalne
-
-                pairs.Add(new EnhancedTestCase
+                int addedForStart = 0;
+                foreach (var candidate in reachable)
                 {
-                    StartX = start.x, StartY = start.y,
-                    TargetX = goal.x, TargetY = goal.y,
+                    if (candidate.Position == start)
+                        continue;
+
+                    if (AddCandidatePair(candidates, usedPairs, start, candidate))
+                        addedForStart++;
+
+                    if (addedForStart >= maxPairsPerStart || candidates.Count >= targetCandidateCount)
+                        break;
+                }
+            }
+
+            return candidates;
+        }
+
+        private void FillBucketsFromCandidates(List<CandidatePair> candidates,
+            List<EnhancedTestCase> result, int pairsPerBucket, float shortMax, float mediumMax)
+        {
+            Shuffle(candidates);
+
+            foreach (var candidate in candidates)
+            {
+                DistanceBucket bucket = GetBucket(candidate.ShortestPathLength, shortMax, mediumMax);
+                if (CountBucket(result, bucket) >= pairsPerBucket)
+                    continue;
+
+                result.Add(new EnhancedTestCase
+                {
+                    StartX = candidate.Start.x,
+                    StartY = candidate.Start.y,
+                    TargetX = candidate.Target.x,
+                    TargetY = candidate.Target.y,
                     Bucket = bucket,
-                    EuclideanDistance = dist,
-                    IsReachable = true
+                    EuclideanDistance = candidate.EuclideanDistance,
+                    ShortestPathLength = candidate.ShortestPathLength
                 });
+
+                if (AllBucketsFilled(result, pairsPerBucket))
+                    break;
             }
 
-            if (pairs.Count < count)
-            {
-                Debug.LogWarning($"[TestPointSelector] Wiązka {bucket}: udało się wygenerować " +
-                                 $"tylko {pairs.Count}/{count} par (za mało walkable pól w zakresie dystansu).");
-            }
-
-            return pairs;
+            WarnIfBucketIncomplete(result, DistanceBucket.Short, pairsPerBucket);
+            WarnIfBucketIncomplete(result, DistanceBucket.Medium, pairsPerBucket);
+            WarnIfBucketIncomplete(result, DistanceBucket.Long, pairsPerBucket);
         }
 
-        /// <summary>
-        /// Generuje pary testowe z nieosiągalnym celem.
-        /// Tworzy izolowany region 5x5 otoczony ścianami i umieszcza cel wewnątrz.
-        /// UWAGA: Modyfikuje mapę (dodaje izolowany pokój) — używaj na kopii gridu!
-        /// </summary>
-        private List<EnhancedTestCase> GenerateUnreachablePairs(GridMap grid, 
-            List<Vector2Int> walkablePool, int count)
+        private void AddFarthestReachableCandidate(List<CandidatePair> candidates,
+            HashSet<string> usedPairs, Vector2Int start, List<ReachableDistance> reachable)
         {
-            var pairs = new List<EnhancedTestCase>();
+            ReachableDistance farthest = default;
+            bool found = false;
 
-            for (int i = 0; i < count; i++)
+            foreach (var candidate in reachable)
             {
-                // Znajdź pozycję startu z walkable pool
-                if (walkablePool.Count == 0) break;
-                Vector2Int start = walkablePool[_rng.Next(walkablePool.Count)];
+                if (candidate.Position == start)
+                    continue;
 
-                // Cel: pole które jest walkable ale w odizolowanym regionie
-                // Szukamy pola które BFS nie osiągnie z żadnego innego pola
-                // Prosta metoda: użyj rogu mapy i sprawdź osiągalność
-                Vector2Int goal = FindIsolatedGoal(grid, start);
-                if (goal.x < 0) continue; // Nie znaleziono
-
-                pairs.Add(new EnhancedTestCase
+                if (!found || candidate.PathLength > farthest.PathLength)
                 {
-                    StartX = start.x, StartY = start.y,
-                    TargetX = goal.x, TargetY = goal.y,
-                    Bucket = DistanceBucket.Unreachable,
-                    EuclideanDistance = Vector2Int.Distance(start, goal),
-                    IsReachable = false
-                });
+                    farthest = candidate;
+                    found = true;
+                }
             }
 
-            return pairs;
+            if (found)
+                AddCandidatePair(candidates, usedPairs, start, farthest);
         }
 
-        /// <summary>
-        /// Szuka walkable pola nieosiągalnego z punktu start (inny connected component).
-        /// </summary>
-        private Vector2Int FindIsolatedGoal(GridMap grid, Vector2Int start)
+        private static bool AddCandidatePair(List<CandidatePair> candidates,
+            HashSet<string> usedPairs, Vector2Int start, ReachableDistance candidate)
         {
-            // Wykonaj flood fill z punktu start — oznacz wszystkie osiągalne
-            var reachable = new HashSet<Vector2Int>();
-            var queue = new Queue<Vector2Int>();
-            queue.Enqueue(start);
-            reachable.Add(start);
+            string pairKey = GetUndirectedPairKey(start, candidate.Position);
+            if (usedPairs.Contains(pairKey))
+                return false;
 
-            while (queue.Count > 0)
+            usedPairs.Add(pairKey);
+            candidates.Add(new CandidatePair
             {
-                var current = queue.Dequeue();
+                Start = start,
+                Target = candidate.Position,
+                EuclideanDistance = Vector2Int.Distance(start, candidate.Position),
+                ShortestPathLength = candidate.PathLength
+            });
+
+            return true;
+        }
+
+        private List<ReachableDistance> GetReachableDistances(GridMap grid, Vector2Int start)
+        {
+            var reachable = new List<ReachableDistance>();
+
+            if (!grid.IsWalkable(start))
+                return reachable;
+
+            var openSet = new MinHeap<DistanceNode>(grid.Width * grid.Height);
+            var closedSet = new HashSet<Vector2Int>();
+            var allNodes = new Dictionary<Vector2Int, DistanceNode>();
+
+            var startNode = new DistanceNode(start.x, start.y) { Cost = 0f };
+            allNodes[start] = startNode;
+            openSet.Add(startNode);
+
+            while (openSet.Count > 0)
+            {
+                DistanceNode currentNode = openSet.RemoveFirst();
+                Vector2Int current = new Vector2Int(currentNode.X, currentNode.Y);
+
+                if (closedSet.Contains(current))
+                    continue;
+
+                closedSet.Add(current);
+                reachable.Add(new ReachableDistance { Position = current, PathLength = currentNode.Cost });
+
                 for (int dx = -1; dx <= 1; dx++)
                 {
                     for (int dy = -1; dy <= 1; dy++)
                     {
-                        if (dx == 0 && dy == 0) continue;
+                        if (dx == 0 && dy == 0)
+                            continue;
+
                         int nx = current.x + dx;
                         int ny = current.y + dy;
                         var next = new Vector2Int(nx, ny);
-                        if (grid.IsWalkable(nx, ny) && !reachable.Contains(next))
+
+                        if (!grid.IsWalkable(nx, ny) || closedSet.Contains(next))
+                            continue;
+
+                        if (dx != 0 && dy != 0)
                         {
-                            // Corner cutting check
-                            if (dx != 0 && dy != 0)
-                            {
-                                if (!grid.IsWalkable(current.x + dx, current.y) ||
-                                    !grid.IsWalkable(current.x, current.y + dy))
-                                    continue;
-                            }
-                            reachable.Add(next);
-                            queue.Enqueue(next);
+                            if (!grid.IsWalkable(current.x + dx, current.y) ||
+                                !grid.IsWalkable(current.x, current.y + dy))
+                                continue;
+                        }
+
+                        if (!allNodes.TryGetValue(next, out DistanceNode nextNode))
+                        {
+                            nextNode = new DistanceNode(nx, ny);
+                            allNodes[next] = nextNode;
+                        }
+
+                        float stepCost = (dx != 0 && dy != 0) ? 1.414f : 1.0f;
+                        float newCost = currentNode.Cost + stepCost;
+                        bool inOpenSet = openSet.Contains(nextNode);
+
+                        if (newCost < nextNode.Cost || !inOpenSet)
+                        {
+                            nextNode.Cost = newCost;
+
+                            if (!inOpenSet)
+                                openSet.Add(nextNode);
+                            else
+                                openSet.UpdateItem(nextNode);
                         }
                     }
                 }
             }
 
-            // Szukaj walkable pola NIE w zbiorze reachable
-            for (int x = 0; x < grid.Width; x++)
-            {
-                for (int y = 0; y < grid.Height; y++)
-                {
-                    if (grid.IsWalkable(x, y) && !reachable.Contains(new Vector2Int(x, y)))
-                        return new Vector2Int(x, y);
-                }
-            }
-
-            return new Vector2Int(-1, -1); // Brak izolowanych pól
+            return reachable;
         }
 
         /// <summary>
-        /// BFS reachability check — sprawdza czy cel jest osiągalny ze startu.
-        /// Uwzględnia 8-kierunkowy ruch z corner cutting prevention.
-        /// Złożoność: O(W×H) worst case.
+        /// Publiczny reachability check zachowany dla testów i walidacji.
+        /// Korzysta z tego samego modelu ruchu co shortest path: 8 kierunków bez ścinania rogów.
         /// </summary>
         public static bool BFSReachabilityCheck(GridMap grid, Vector2Int start, Vector2Int goal)
         {
-            if (!grid.IsWalkable(start) || !grid.IsWalkable(goal)) return false;
-            if (start == goal) return true;
+            return TryGetShortestPathLength(grid, start, goal, out _);
+        }
 
-            var visited = new HashSet<Vector2Int>();
-            var queue = new Queue<Vector2Int>();
-            queue.Enqueue(start);
-            visited.Add(start);
+        /// <summary>
+        /// Dijkstra na siatce 8-kierunkowej. Zwraca realną geometryczną długość najkrótszej ścieżki.
+        /// Ruch prosty = 1.0, diagonalny = 1.414.
+        /// </summary>
+        public static bool TryGetShortestPathLength(GridMap grid, Vector2Int start, Vector2Int goal,
+            out float pathLength)
+        {
+            pathLength = 0f;
 
-            while (queue.Count > 0)
+            if (!grid.IsWalkable(start) || !grid.IsWalkable(goal))
+                return false;
+
+            if (start == goal)
+                return true;
+
+            var openSet = new MinHeap<DistanceNode>(grid.Width * grid.Height);
+            var closedSet = new HashSet<Vector2Int>();
+            var allNodes = new Dictionary<Vector2Int, DistanceNode>();
+
+            var startNode = new DistanceNode(start.x, start.y) { Cost = 0f };
+            allNodes[start] = startNode;
+            openSet.Add(startNode);
+
+            while (openSet.Count > 0)
             {
-                var current = queue.Dequeue();
-                if (current == goal) return true;
+                DistanceNode currentNode = openSet.RemoveFirst();
+                Vector2Int current = new Vector2Int(currentNode.X, currentNode.Y);
+
+                if (closedSet.Contains(current))
+                    continue;
+
+                if (current == goal)
+                {
+                    pathLength = currentNode.Cost;
+                    return true;
+                }
+
+                closedSet.Add(current);
 
                 for (int dx = -1; dx <= 1; dx++)
                 {
                     for (int dy = -1; dy <= 1; dy++)
                     {
-                        if (dx == 0 && dy == 0) continue;
+                        if (dx == 0 && dy == 0)
+                            continue;
+
                         int nx = current.x + dx;
                         int ny = current.y + dy;
                         var next = new Vector2Int(nx, ny);
 
-                        if (grid.IsWalkable(nx, ny) && !visited.Contains(next))
+                        if (!grid.IsWalkable(nx, ny) || closedSet.Contains(next))
+                            continue;
+
+                        if (dx != 0 && dy != 0)
                         {
-                            // Corner cutting prevention (jak w A*)
-                            if (dx != 0 && dy != 0)
-                            {
-                                if (!grid.IsWalkable(current.x + dx, current.y) ||
-                                    !grid.IsWalkable(current.x, current.y + dy))
-                                    continue;
-                            }
-                            visited.Add(next);
-                            queue.Enqueue(next);
+                            if (!grid.IsWalkable(current.x + dx, current.y) ||
+                                !grid.IsWalkable(current.x, current.y + dy))
+                                continue;
+                        }
+
+                        if (!allNodes.TryGetValue(next, out DistanceNode nextNode))
+                        {
+                            nextNode = new DistanceNode(nx, ny);
+                            allNodes[next] = nextNode;
+                        }
+
+                        float stepCost = (dx != 0 && dy != 0) ? 1.414f : 1.0f;
+                        float newCost = currentNode.Cost + stepCost;
+                        bool inOpenSet = openSet.Contains(nextNode);
+
+                        if (newCost < nextNode.Cost || !inOpenSet)
+                        {
+                            nextNode.Cost = newCost;
+
+                            if (!inOpenSet)
+                                openSet.Add(nextNode);
+                            else
+                                openSet.UpdateItem(nextNode);
                         }
                     }
                 }
@@ -290,14 +440,88 @@ namespace Pathfinding.Benchmark
             return positions;
         }
 
+        private static float GetMaxShortestPathLength(List<CandidatePair> candidates)
+        {
+            float max = 0f;
+            foreach (var candidate in candidates)
+            {
+                if (candidate.ShortestPathLength > max)
+                    max = candidate.ShortestPathLength;
+            }
+            return max;
+        }
+
+        private static int CountBucket(List<EnhancedTestCase> testCases, DistanceBucket bucket)
+        {
+            int count = 0;
+            foreach (var testCase in testCases)
+            {
+                if (testCase.Bucket == bucket)
+                    count++;
+            }
+            return count;
+        }
+
+        private static bool AllBucketsFilled(List<EnhancedTestCase> testCases, int pairsPerBucket)
+        {
+            return CountBucket(testCases, DistanceBucket.Short) >= pairsPerBucket &&
+                   CountBucket(testCases, DistanceBucket.Medium) >= pairsPerBucket &&
+                   CountBucket(testCases, DistanceBucket.Long) >= pairsPerBucket;
+        }
+
+        private static DistanceBucket GetBucket(float pathLength, float shortMax, float mediumMax)
+        {
+            if (pathLength < shortMax)
+                return DistanceBucket.Short;
+
+            if (pathLength < mediumMax)
+                return DistanceBucket.Medium;
+
+            return DistanceBucket.Long;
+        }
+
+        private static void WarnIfBucketIncomplete(List<EnhancedTestCase> testCases, DistanceBucket bucket,
+            int expectedCount)
+        {
+            int actualCount = CountBucket(testCases, bucket);
+            if (actualCount >= expectedCount)
+                return;
+
+            Debug.LogWarning($"[TestPointSelector] Wiązka {bucket}: udało się wygenerować " +
+                             $"tylko {actualCount}/{expectedCount} unikalnych par. " +
+                             "Na tej mapie może brakować osiągalnych par w danym zakresie realnej długości.");
+        }
+
+        private static string GetUndirectedPairKey(Vector2Int a, Vector2Int b)
+        {
+            int keyA = a.x * 10000 + a.y;
+            int keyB = b.x * 10000 + b.y;
+
+            if (keyA <= keyB)
+                return $"{a.x},{a.y}|{b.x},{b.y}";
+
+            return $"{b.x},{b.y}|{a.x},{a.y}";
+        }
+
+        private void Shuffle<T>(List<T> list)
+        {
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = _rng.Next(0, i + 1);
+                T temp = list[i];
+                list[i] = list[j];
+                list[j] = temp;
+            }
+        }
+
         /// <summary>
         /// Eksportuje rozszerzony zestaw testów do CSV.
-        /// Format: StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,IsReachable
+        /// Format: StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,ShortestPathLength
         /// </summary>
         public static void ExportToCsv(List<EnhancedTestCase> testCases, string filePath)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,IsReachable");
+            sb.AppendLine("StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,ShortestPathLength");
 
             foreach (var tc in testCases)
             {

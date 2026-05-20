@@ -65,7 +65,7 @@ namespace Pathfinding.Core
         /// <summary>
         /// Zwraca koszt wejścia na pole (x, y). Domyślnie 1.0f.
         /// Wartości > 1.0 oznaczają trudniejszy teren (np. błoto, ogień).
-        /// Używane przez algorytmy A*, Dijkstra, CustomGreedy, GBFS w scenariuszu DS3.
+        /// Używane przez algorytmy A*, Dijkstra i CustomGreedy w scenariuszach z wagami terenu.
         /// JPS pomijany w DS3 (nie wspiera weighted gridów).
         /// </summary>
         public float GetMovementCost(int x, int y)
@@ -86,6 +86,10 @@ namespace Pathfinding.Core
         public void SetMovementCost(int x, int y, float cost)
         {
             if (!IsValidCoordinate(x, y)) return;
+
+            if (float.IsNaN(cost) || float.IsInfinity(cost) || cost <= 0f)
+                throw new ArgumentOutOfRangeException(nameof(cost), "Koszt ruchu musi być dodatnią, skończoną liczbą.");
+
             _movementCost[x, y] = cost;
         }
 

@@ -8233,18 +8233,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   benchmarkMode: 1
   autoStartBenchmark: 0
-  runWithoutVisualization: 1
-  runFullBenchmarkSuite: 1
+  runWithoutVisualization: 0
+  runFullBenchmarkSuite: 0
   scenario: 0
   randomSeed: 42
   selectedAlgorithm: 4
   mapFileName: Map3.txt
   testCasesFileName: TestCases.csv
-  benchmarkIterations: 1
+  benchmarkIterations: 30
   outputFileName: benchmark_results.csv
   monitorCPUTemperature: 1
   headlessIterationsPerYield: 3
   headlessRowsPerFlush: 250
+  forceGcBeforeColdStart: 0
   stopBenchmarkKey: 27
   mapSource: 2
   proceduralMapWidth: 32
@@ -8261,7 +8262,6 @@ MonoBehaviour:
   includeFileMapInFullSuite: 0
   useDistanceBucketing: 1
   pairsPerBucket: 35
-  unreachablePairs: 5
   movingObstacleCount: 20
   patrolLength: 6
   pathObstructionChanges: 6
@@ -9070,67 +9070,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1412350636}
   m_CullTransparentMesh: 1
---- !u!1 &1421535663
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1421535665}
-  - component: {fileID: 1421535664}
-  m_Layer: 0
-  m_Name: BenchmarkRunner
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!114 &1421535664
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1421535663}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5a6bbbd825ebb434c9bfb4eb4b385f71, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  testCasesFileName: TestCases.csv
-  mapFileName: Map.txt
-  testIterations: 30
-  outputFileName: benchmark_results.csv
-  scenario: 0
-  randomSeed: 42
-  useProceduralMaps: 0
-  proceduralMapWidth: 32
-  proceduralMapHeight: 20
-  obstacleDensityLevels:
-  - 0.1
-  - 0.2
-  - 0.3
-  - 0.4
-  movingObstacleCount: 3
-  patrolLength: 6
-  monitorCPUTemperature: 1
---- !u!4 &1421535665
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1421535663}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 5.2838154, y: -0.061638653, z: -0.034768287}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1448424554
 GameObject:
   m_ObjectHideFlags: 0
@@ -10028,8 +9967,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 34615dd65df3853408a2005e7937477a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  repetitions: 100
-  verboseLogging: 0
+  repetitions: 156
+  verboseLogging: 1
 --- !u!4 &1589098949
 Transform:
   m_ObjectHideFlags: 0
@@ -18439,5 +18378,4 @@ SceneRoots:
   - {fileID: 1192398217}
   - {fileID: 1575240948}
   - {fileID: 66302110}
-  - {fileID: 1421535665}
   - {fileID: 1589098949}

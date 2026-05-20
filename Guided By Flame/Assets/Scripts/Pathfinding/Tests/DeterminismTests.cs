@@ -197,7 +197,8 @@ namespace Pathfinding.Tests
 
         /// <summary>
         /// A* i Dijkstra powinny znajdować ścieżkę o IDENTYCZNEJ długości
-        /// (oba są optymalne). JPS też na uniform gridzie.
+        /// (oba są optymalne). JPS jest raportowany informacyjnie, bo obecna
+        /// implementacja nie pełni roli referencyjnego algorytmu optymalnego.
         /// </summary>
         private void RunOptimalityConsistencyTests()
         {
@@ -252,21 +253,21 @@ namespace Pathfinding.Tests
                         info);
                 }
 
-                // JPS vs A* — na uniform gridzie mogą mieć różną długość i reachability
-                // z powodu różnic w implementacji ścinania rogów (corner cutting).
-                // Logujemy różnice informacyjnie, ale nie failujemy testu determinizmu!
+                // JPS vs A* — obecna implementacja JPS nie jest referencją optymalności.
+                // Różnice długości dokumentujemy informacyjnie, ale test determinizmu nie powinien
+                // failować, jeśli JPS jest powtarzalny i znajduje poprawną ścieżkę.
                 if (resultA.PathFound && resultJ.PathFound)
                 {
                     float tolerance = 0.01f;
                     bool jpsMatch = Math.Abs(resultA.PathLength - resultJ.PathLength) < tolerance;
                     string info = $"A*={resultA.PathLength:F4}, JPS={resultJ.PathLength:F4}";
                     RecordResult($"{testNameBase}_JPSvsAStar", true, "",
-                        jpsMatch ? info : $"[INFO] Różnica PathLength (Corner Cutting): {info}");
+                        jpsMatch ? info : $"[INFO] Różnica PathLength JPS względem A*: {info}");
                 }
                 else if (resultA.PathFound != resultJ.PathFound)
                 {
                     RecordResult($"{testNameBase}_JPSvsAStar", true, "",
-                        $"[INFO] Różnica PathFound (Corner Cutting): A*={resultA.PathFound}, JPS={resultJ.PathFound}");
+                        $"[INFO] Różnica PathFound: A*={resultA.PathFound}, JPS={resultJ.PathFound}");
                 }
                 else
                 {
@@ -367,12 +368,12 @@ namespace Pathfinding.Tests
                 }
             }
 
-            // Algorytmy wspierające DS3 (bez JPS)
+            // Algorytmy wspierające DS3 (bez JPS i GBFS).
+            // GBFS jest testowany w innych zestawach, ale ignoruje wagi terenu z definicji implementacji.
             var algorithms = new IPathfindingAlgorithm[]
             {
                 new AStarAlgorithm(),
                 new DijkstraAlgorithm(),
-                new GreedyBestFirstAlgorithm(),
                 new CustomGreedyAlgorithm(),
             };
 
@@ -544,8 +545,8 @@ namespace Pathfinding.Tests
         /// </summary>
         private void RunFullPathDeterminismTests()
         {
-            Debug.Log("── Zestaw 6: Determinizm pełnej ścieżki ──");
-            _report.AppendLine("\n── ZESTAW 6: PEŁNA ŚCIEŻKA ──");
+            Debug.Log("── Zestaw 7: Determinizm pełnej ścieżki ──");
+            _report.AppendLine("\n── ZESTAW 7: PEŁNA ŚCIEŻKA ──");
 
             // Testuj na kilku mapach
             var maps = new (string name, GridMap map)[]

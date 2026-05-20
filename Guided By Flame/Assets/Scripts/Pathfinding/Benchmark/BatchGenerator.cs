@@ -10,15 +10,15 @@ namespace Pathfinding.Benchmark
     /// Batch generator — generuje wszystkie kombinacje map do systematycznych testów.
     /// 
     /// Kombinacje: 4 topologie × 4 zagęszczenia × 4 seedy = 64 mapy
-    /// Każda mapa eksportowana do pliku .txt kompatybilnego z BenchmarkManager.
+    /// Każda mapa eksportowana do pliku .txt kompatybilnego z PathfindingVisualizer.
     /// 
     /// Dodatkowo generuje rozszerzone TestCases.csv z distance bucketing
-    /// i BFS reachability validation dla każdej mapy.
+    /// po realnej długości najkrótszej ścieżki dla każdej mapy.
     /// 
     /// Użycie w Unity:
     /// 1. Dodaj ten skrypt do pustego GameObject
     /// 2. Kliknij Play → mapy wygenerowane w GeneratedMaps/
-    /// 3. Ustaw mapFileName w BenchmarkManager na wygenerowaną mapę
+    /// 3. Ustaw mapFileName w PathfindingVisualizer na wygenerowaną mapę
     /// 
     /// Alternatywnie: wywołaj BatchGenerator.GenerateAll() z kodu.
     /// </summary>
@@ -44,10 +44,6 @@ namespace Pathfinding.Benchmark
         [Tooltip("Ile par testowych na wiązkę dystansową (SHORT/MEDIUM/LONG).")]
         [Range(5, 100)]
         public int pairsPerBucket = 30;
-
-        [Tooltip("Ile par z nieosiągalnym celem.")]
-        [Range(0, 20)]
-        public int unreachablePairs = 5;
 
         [Tooltip("Czy generować test cases dla każdej mapy.")]
         public bool generateTestCases = true;
@@ -111,7 +107,7 @@ namespace Pathfinding.Benchmark
                         if (generateTestCases)
                         {
                             var selector = new TestPointSelector(seed);
-                            var testCases = selector.GenerateTestCases(map, pairsPerBucket, unreachablePairs);
+                            var testCases = selector.GenerateTestCases(map, pairsPerBucket);
 
                             string csvName = Path.GetFileNameWithoutExtension(fileName) + "_TestCases.csv";
                             string csvPath = Path.Combine(topoDir, csvName);

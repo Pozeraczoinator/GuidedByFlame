@@ -6,9 +6,9 @@ using UnityEngine;
 namespace Pathfinding.MapGenerators
 {
     /// <summary>
-    /// Eksportuje GridMap do pliku .txt w formacie kompatybilnym z BenchmarkManager.
+    /// Eksportuje GridMap do pliku .txt w formacie kompatybilnym z PathfindingVisualizer.
     /// Format: '0' = walkable, '1' = przeszkoda. Każdy wiersz = jeden rząd Y mapy.
-    /// Odczyt od dołu do góry (zgodny z LoadGridMap w BenchmarkManager).
+    /// Odczyt od dołu do góry (zgodny z LoadGridMap w PathfindingVisualizer).
     /// 
     /// Użycie:
     ///   MapExporter.ExportToFile(gridMap, "GeneratedMaps/maze_32x20_d20_s42.txt");
@@ -18,7 +18,7 @@ namespace Pathfinding.MapGenerators
     {
         /// <summary>
         /// Eksportuje mapę do pliku .txt. Tworzy katalog jeśli nie istnieje.
-        /// Format zgodny z BenchmarkManager.LoadGridMap() — odczyt od dołu do góry.
+        /// Format zgodny z PathfindingVisualizer.LoadGridMap() — odczyt od dołu do góry.
         /// </summary>
         /// <param name="grid">Mapa do eksportu</param>
         /// <param name="filePath">Ścieżka pliku wyjściowego (względna lub bezwzględna)</param>

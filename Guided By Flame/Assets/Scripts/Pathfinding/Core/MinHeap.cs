@@ -13,7 +13,7 @@ namespace Pathfinding.Core
 
         public MinHeap(int maxHeapSize)
         {
-            _items = new T[maxHeapSize];
+            _items = new T[Math.Max(1, maxHeapSize)];
         }
 
         public void Add(T item)
@@ -32,11 +32,20 @@ namespace Pathfinding.Core
 
         public T RemoveFirst()
         {
+            if (_currentItemCount == 0)
+                throw new InvalidOperationException("Nie można pobrać elementu z pustego MinHeap.");
+
             T firstItem = _items[0];
             _currentItemCount--;
-            _items[0] = _items[_currentItemCount];
-            _items[0].HeapIndex = 0;
-            SortDown(_items[0]);
+
+            if (_currentItemCount > 0)
+            {
+                _items[0] = _items[_currentItemCount];
+                _items[0].HeapIndex = 0;
+                SortDown(_items[0]);
+            }
+
+            _items[_currentItemCount] = default;
             return firstItem;
         }
 
@@ -52,6 +61,9 @@ namespace Pathfinding.Core
 
         public bool Contains(T item)
         {
+            if (item == null || item.HeapIndex < 0 || item.HeapIndex >= _currentItemCount)
+                return false;
+
             return Equals(_items[item.HeapIndex], item);
         }
 
