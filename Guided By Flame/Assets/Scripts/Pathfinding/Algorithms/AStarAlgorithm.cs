@@ -102,14 +102,14 @@ namespace Pathfinding.Algorithms
                     // DS3: Uwzględniamy wagę terenu (GetMovementCost) — koszt wejścia na pole sąsiada.
                     // Na mapach bez wag (DS2/Static) GetMovementCost() zwraca 1.0f → brak zmiany.
                     float terrainCost = grid.GetMovementCost(neighbor.X, neighbor.Y);
-                    int moveCostToNeighbor = currentNode.GCost + (int)(GetDistance(currentNode, neighbor) * terrainCost);
+                    int moveCostToNeighbor = currentNode.GCost + (int)(GetOctagonalDistance(currentNode, neighbor) * terrainCost);
                     
                     bool inOpenSet = openSet.Contains(neighbor); // W MinHeap zaimplementowaliśmy IHeapItem
                     
                     if (moveCostToNeighbor < neighbor.GCost || !inOpenSet)
                     {
                         neighbor.GCost = moveCostToNeighbor;
-                        neighbor.HCost = GetDistance(neighbor, targetNode);
+                        neighbor.HCost = GetOctagonalDistance(neighbor, targetNode);
                         neighbor.Parent = currentNode;
 
                         if (!inOpenSet)
@@ -188,7 +188,7 @@ namespace Pathfinding.Algorithms
             return neighbors;
         }
 
-        private int GetDistance(Node nodeA, Node nodeB)
+        private int GetOctagonalDistance(Node nodeA, Node nodeB)
         {
             int dstX = Math.Abs(nodeA.X - nodeB.X);
             int dstY = Math.Abs(nodeA.Y - nodeB.Y);

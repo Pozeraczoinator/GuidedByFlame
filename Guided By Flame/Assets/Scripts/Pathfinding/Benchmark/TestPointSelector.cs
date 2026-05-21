@@ -41,13 +41,15 @@ namespace Pathfinding.Benchmark
             public int TargetX, TargetY;
             public DistanceBucket Bucket;
             public float EuclideanDistance;
+            public float OctagonalDistance;
             public float ShortestPathLength;
 
             public override string ToString()
             {
                 return string.Format(CultureInfo.InvariantCulture,
-                    "{0},{1},{2},{3},{4},{5:F2},{6:F3}",
-                    StartX, StartY, TargetX, TargetY, Bucket, EuclideanDistance, ShortestPathLength);
+                    "{0},{1},{2},{3},{4},{5:F2},{6:F3},{7:F3}",
+                    StartX, StartY, TargetX, TargetY, Bucket, EuclideanDistance,
+                    OctagonalDistance, ShortestPathLength);
             }
         }
 
@@ -96,6 +98,7 @@ namespace Pathfinding.Benchmark
             public Vector2Int Start;
             public Vector2Int Target;
             public float EuclideanDistance;
+            public float OctagonalDistance;
             public float ShortestPathLength;
         }
 
@@ -206,6 +209,7 @@ namespace Pathfinding.Benchmark
                     TargetY = candidate.Target.y,
                     Bucket = bucket,
                     EuclideanDistance = candidate.EuclideanDistance,
+                    OctagonalDistance = candidate.OctagonalDistance,
                     ShortestPathLength = candidate.ShortestPathLength
                 });
 
@@ -253,6 +257,7 @@ namespace Pathfinding.Benchmark
                 Start = start,
                 Target = candidate.Position,
                 EuclideanDistance = Vector2Int.Distance(start, candidate.Position),
+                OctagonalDistance = CalculateOctagonalDistance(start, candidate.Position),
                 ShortestPathLength = candidate.PathLength
             });
 
@@ -480,6 +485,16 @@ namespace Pathfinding.Benchmark
             return DistanceBucket.Long;
         }
 
+        public static float CalculateOctagonalDistance(Vector2Int a, Vector2Int b)
+        {
+            int dx = Math.Abs(a.x - b.x);
+            int dy = Math.Abs(a.y - b.y);
+            int diagonalSteps = Math.Min(dx, dy);
+            int straightSteps = Math.Abs(dx - dy);
+
+            return diagonalSteps * 1.414f + straightSteps;
+        }
+
         private static void WarnIfBucketIncomplete(List<EnhancedTestCase> testCases, DistanceBucket bucket,
             int expectedCount)
         {
@@ -516,12 +531,12 @@ namespace Pathfinding.Benchmark
 
         /// <summary>
         /// Eksportuje rozszerzony zestaw testów do CSV.
-        /// Format: StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,ShortestPathLength
+        /// Format: StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,OctagonalDistance,ShortestPathLength
         /// </summary>
         public static void ExportToCsv(List<EnhancedTestCase> testCases, string filePath)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,ShortestPathLength");
+            sb.AppendLine("StartX,StartY,TargetX,TargetY,DistanceBucket,EuclideanDist,OctagonalDistance,ShortestPathLength");
 
             foreach (var tc in testCases)
             {

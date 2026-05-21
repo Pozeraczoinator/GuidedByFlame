@@ -19,7 +19,7 @@ Pathfinding/
 ├── Algorithms/                    # 5 implementacji IPathfindingAlgorithm
 │   ├── AStarAlgorithm.cs          # A* z heurystyką oktagonalną
 │   ├── DijkstraAlgorithm.cs       # Dijkstra (A* bez heurystyki)
-│   ├── GreedyBestFirstAlgorithm.cs# GBFS — czysta heurystyka Manhattan
+│   ├── GreedyBestFirstAlgorithm.cs# GBFS — czysta heurystyka oktagonalna
 │   ├── CustomGreedyAlgorithm.cs   # Weighted A* (w=50) + kara za skręt
 │   └── JumpPointSearchAlgorithm.cs# JPS na uniform gridzie
 │
@@ -99,6 +99,9 @@ Pathfinding/
 | `PathSmoothness` | float | DirectionChanges / PathLength |
 | `ColdStartTimeMs` | double | Iteracja 0 (JIT warm-up) |
 | `CPUTemperature` | float | Opcjonalnie WMI/OHM |
+| `EuclideanDistance` | float | Odległość w linii prostej między startem i celem |
+| `OctagonalDistance` | float | Odległość oktagonalna w jednostkach geometrycznych |
+| `ReferenceShortestPathLength` | float | Referencyjna najkrótsza ścieżka użyta do bucketowania |
 
 ---
 
@@ -148,11 +151,11 @@ Od wersji `feature/pathfinding-audit-determinism`:
 ## 9. Format Wyjściowy CSV
 
 **Separator**: średnik (`;`)
-**31 kolumn**:
+**32 kolumny**:
 ```
 TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;
 MapTopology;MapSeed;MapDensity;MapWidth;MapHeight;
-DistanceBucket;EuclideanDistance;ReferenceShortestPathLength;
+DistanceBucket;EuclideanDistance;OctagonalDistance;ReferenceShortestPathLength;
 PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;
 AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;
 AvgExecutionTicks;AvgGCAllocBytes;

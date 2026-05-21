@@ -91,7 +91,7 @@ namespace Pathfinding.Visualization
         [Range(1, 200)]
         public int benchmarkIterations = 30;
 
-        [Tooltip("Nazwa pliku wynikowego CSV (31 kolumn, separator: średnik).")]
+        [Tooltip("Nazwa pliku wynikowego CSV (32 kolumny, separator: średnik).")]
         public string outputFileName = "benchmark_results.csv";
 
         [Header("═══ Monitoring Sprzętowy ═══")]
@@ -247,6 +247,7 @@ namespace Pathfinding.Visualization
             public int targetX, targetY;
             public string distanceBucket;
             public float euclideanDistance;
+            public float octagonalDistance;
             public float referenceShortestPathLength;
         }
 
@@ -274,6 +275,38 @@ namespace Pathfinding.Visualization
             }
 
             return false;
+        }
+
+        private static string FormatProgress(int completed, int total, string unitLabel)
+        {
+            if (total <= 0)
+                return $"0.0% (0/0 {unitLabel})";
+
+            int clampedCompleted = Mathf.Clamp(completed, 0, total);
+            float percent = clampedCompleted * 100f / total;
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0:F1}% ({1}/{2} {3})", percent, clampedCompleted, total, unitLabel);
+        }
+
+        private static int CountItems<T>(IEnumerable<T> items)
+        {
+            int count = 0;
+            foreach (T item in items)
+                count++;
+            return count;
+        }
+
+        private int EstimateFullSuiteTestCaseTotal()
+        {
+            int generatedMapConfigs = CountItems(GetSuiteMapSizes()) *
+                                      GetSuiteTopologies().Count *
+                                      CountItems(GetSuiteDensities()) *
+                                      CountItems(GetSuiteSeeds());
+            int fileMapConfigs = includeFileMapInFullSuite ? 1 : 0;
+            int scenarioCount = Enum.GetValues(typeof(ScenarioType)).Length;
+            int expectedPairsPerMap = pairsPerBucket * 3;
+
+            return (generatedMapConfigs + fileMapConfigs) * scenarioCount * expectedPairsPerMap;
         }
 
         private Sprite GetObstacleSpriteForCell(int x, int y)
@@ -392,12 +425,15 @@ namespace Pathfinding.Visualization
         private IEnumerator AutoRunAllCases()
         {
             string resultsPath = Path.Combine(Application.dataPath, "..", outputFileName);
+            _currentTestCaseIndex = 0;
             _stopBenchmarkRequested = false;
             _rowsSinceFlush = 0;
+            int totalTestCases = _testCases.Count;
             Debug.Log($"[Visualizer] ══════════════════════════════════════════");
             Debug.Log($"[Visualizer] START BENCHMARKU");
             Debug.Log($"[Visualizer] Tryb: {benchmarkMode} | Scenariusz: {scenario}");
-            Debug.Log($"[Visualizer] Iteracje: {benchmarkIterations} | Testy: {_testCases.Count}");
+            Debug.Log($"[Visualizer] Iteracje: {benchmarkIterations} | Testy: {totalTestCases}");
+            Debug.Log($"[Visualizer] Postęp: {FormatProgress(0, totalTestCases, "testów")}");
             Debug.Log($"[Visualizer] Plik CSV: {resultsPath}");
             Debug.Log($"[Visualizer] ══════════════════════════════════════════");
 
@@ -432,7 +468,8 @@ namespace Pathfinding.Visualization
                     // Walidacja
                     if (!_gridMap.IsWalkable(startPos) || !_gridMap.IsWalkable(targetPos))
                     {
-                        Debug.LogWarning($"[Visualizer] Test {testId}: start/cel nie jest walkable. Pomijam.");
+                        Debug.LogWarning($"[Visualizer] Test {testId + 1}/{totalTestCases}: start/cel nie jest walkable. Pomijam. " +
+                                         $"Postęp: {FormatProgress(testId + 1, totalTestCases, "testów")}");
                         continue;
                     }
 
@@ -445,9 +482,10 @@ namespace Pathfinding.Visualization
                         Debug.Log($"[Visualizer] ── Test {testId + 1}/{_testCases.Count} ── " +
                                   $"Kolejność: {string.Join(" → ", GetAlgorithmNames(algorithmsToRun))}");
                     }
-
-
-
+                    if (ShouldLogDetailedBenchmark)
+                    {
+                        Debug.Log($"[Visualizer] Postęp: {FormatProgress(testId, totalTestCases, "testów")}");
+                    }
 
                     List<Vector2Int> scenarioChanges = null;
                     PrepareScenarioSnapshot(startPos, targetPos, testId, out scenarioChanges);
@@ -543,7 +581,7 @@ namespace Pathfinding.Visualization
                     {
                         writer.Flush();
                         _rowsSinceFlush = 0;
-                        Debug.Log($"[Visualizer] Postęp headless: {testId + 1}/{_testCases.Count} testów.");
+                        Debug.Log($"[Visualizer] Postęp headless: {FormatProgress(testId + 1, totalTestCases, "testów")}");
                         yield return null;
                     }
 
@@ -554,6 +592,11 @@ namespace Pathfinding.Visualization
                     {
                         _gridMap = _originalGridMap.Clone();
                         if (ShouldVisualize) RefreshBasemapColors();
+                    }
+
+                    if (ShouldLogDetailedBenchmark)
+                    {
+                        Debug.Log($"[Visualizer] Postęp: {FormatProgress(testId + 1, totalTestCases, "testów")}");
                     }
                 }
 
@@ -573,6 +616,7 @@ namespace Pathfinding.Visualization
             Debug.Log(_stopBenchmarkRequested
                 ? "[Visualizer] BENCHMARK ZATRZYMANY PRZEZ UŻYTKOWNIKA"
                 : "[Visualizer] ✓ BENCHMARK ZAKOŃCZONY");
+            Debug.Log($"[Visualizer] Postęp końcowy: {FormatProgress(_currentTestCaseIndex, totalTestCases, "testów")}");
             Debug.Log($"[Visualizer] Wyniki: {Path.GetFullPath(resultsPath)}");
             Debug.Log($"[Visualizer] ══════════════════════════════════════════");
             _isAutoRunning = false;
@@ -585,6 +629,7 @@ namespace Pathfinding.Visualization
             MapTopology originalMapSource = mapSource;
             int originalRandomSeed = randomSeed;
             List<TestCase> originalTestCases = _testCases;
+            int estimatedTotalTestCases = EstimateFullSuiteTestCaseTotal();
 
             _suiteTestId = 0;
             _stopBenchmarkRequested = false;
@@ -593,6 +638,7 @@ namespace Pathfinding.Visualization
             Debug.Log("[Visualizer] START PEŁNEGO BENCHMARKU HEADLESS");
             Debug.Log($"[Visualizer] Tryb algorytmów: {benchmarkMode} | Iteracje: {benchmarkIterations}");
             Debug.Log($"[Visualizer] Przerwanie: naciśnij {stopBenchmarkKey}, zapis CSV zostanie domknięty.");
+            Debug.Log($"[Visualizer] Planowany postęp: {FormatProgress(0, estimatedTotalTestCases, "testów")}");
             Debug.Log($"[Visualizer] Wyniki CSV: {resultsPath}");
 
             float tempStart = -1f;
@@ -616,7 +662,7 @@ namespace Pathfinding.Visualization
                     _activeMapWidth = _gridMap.Width;
                     _activeMapHeight = _gridMap.Height;
                     _testCases = GenerateTestCasesForMap(_gridMap, randomSeed);
-                    yield return StartCoroutine(RunAllScenariosForCurrentMap(writer));
+                    yield return StartCoroutine(RunAllScenariosForCurrentMap(writer, estimatedTotalTestCases));
                 }
 
                 foreach ((int width, int height) size in GetSuiteMapSizes())
@@ -653,7 +699,7 @@ namespace Pathfinding.Visualization
                                 _testCases = GenerateTestCasesForMap(_gridMap, seed);
 
                                 Debug.Log($"[Visualizer] Mapa: {_activeMapTopology}, rozmiar={_activeMapWidth}x{_activeMapHeight}, density={density:P0}, seed={seed}, testy={_testCases.Count}");
-                                yield return StartCoroutine(RunAllScenariosForCurrentMap(writer));
+                                yield return StartCoroutine(RunAllScenariosForCurrentMap(writer, estimatedTotalTestCases));
                             }
                         }
                     }
@@ -684,10 +730,11 @@ namespace Pathfinding.Visualization
                 Debug.Log($"[Visualizer] PEŁNY BENCHMARK ZAKOŃCZONY. Wyniki: {Path.GetFullPath(resultsPath)}");
             }
 
+            Debug.Log($"[Visualizer] Postęp końcowy: {FormatProgress(_suiteTestId, estimatedTotalTestCases, "testów")}");
             _isAutoRunning = false;
         }
 
-        private IEnumerator RunAllScenariosForCurrentMap(StreamWriter writer)
+        private IEnumerator RunAllScenariosForCurrentMap(StreamWriter writer, int estimatedTotalTestCases)
         {
             GridMap baseMap = _gridMap.Clone();
             List<TestCase> mapTestCases = new List<TestCase>(_testCases);
@@ -698,7 +745,8 @@ namespace Pathfinding.Visualization
                     yield break;
 
                 scenario = suiteScenario;
-                Debug.Log($"[Visualizer] Scenariusz: {scenario} | Mapa: {_activeMapTopology}");
+                Debug.Log($"[Visualizer] Scenariusz: {scenario} | Mapa: {_activeMapTopology} | " +
+                          $"Globalnie: {FormatProgress(_suiteTestId, estimatedTotalTestCases, "testów")}");
 
                 for (int i = 0; i < mapTestCases.Count; i++)
                 {
@@ -715,7 +763,8 @@ namespace Pathfinding.Visualization
 
                     if (!_gridMap.IsWalkable(startPos) || !_gridMap.IsWalkable(targetPos))
                     {
-                        Debug.LogWarning($"[Visualizer] Pomijam test {_suiteTestId}: start/cel nie jest walkable.");
+                        Debug.LogWarning($"[Visualizer] Pomijam test {_suiteTestId + 1}: start/cel nie jest walkable. " +
+                                         $"Globalnie: {FormatProgress(_suiteTestId + 1, estimatedTotalTestCases, "testów")}");
                         _suiteTestId++;
                         continue;
                     }
@@ -757,7 +806,7 @@ namespace Pathfinding.Visualization
                     if (_suiteTestId % HeadlessProgressInterval == 0)
                     {
                         writer.Flush();
-                        Debug.Log($"[Visualizer] Postęp pełnego benchmarku: {_suiteTestId} test cases.");
+                        Debug.Log($"[Visualizer] Postęp pełnego benchmarku: {FormatProgress(_suiteTestId, estimatedTotalTestCases, "testów")}");
                         yield return null;
                     }
                 }
@@ -1387,34 +1436,64 @@ namespace Pathfinding.Visualization
                 var columns = lines[i].Split(',');
                 if (columns.Length >= 4)
                 {
+                    int startX = int.Parse(columns[0].Trim());
+                    int startY = int.Parse(columns[1].Trim());
+                    int targetX = int.Parse(columns[2].Trim());
+                    int targetY = int.Parse(columns[3].Trim());
+                    Vector2Int start = new Vector2Int(startX, startY);
+                    Vector2Int target = new Vector2Int(targetX, targetY);
+
                     float euclideanDistance;
+                    float octagonalDistance;
                     float referenceShortestPathLength;
-                    ParseTestCaseDistances(columns, out euclideanDistance, out referenceShortestPathLength);
+                    ParseTestCaseDistances(columns, start, target, out euclideanDistance,
+                        out octagonalDistance, out referenceShortestPathLength);
+                    if (octagonalDistance < 0f)
+                        octagonalDistance = TestPointSelector.CalculateOctagonalDistance(start, target);
 
                     _testCases.Add(new TestCase
                     {
-                        startX = int.Parse(columns[0].Trim()),
-                        startY = int.Parse(columns[1].Trim()),
-                        targetX = int.Parse(columns[2].Trim()),
-                        targetY = int.Parse(columns[3].Trim()),
+                        startX = startX,
+                        startY = startY,
+                        targetX = targetX,
+                        targetY = targetY,
                         distanceBucket = columns.Length >= 5 ? columns[4].Trim() : "Unknown",
                         euclideanDistance = euclideanDistance,
+                        octagonalDistance = octagonalDistance,
                         referenceShortestPathLength = referenceShortestPathLength
                     });
                 }
             }
         }
 
-        private static void ParseTestCaseDistances(string[] columns, out float euclideanDistance,
+        private static void ParseTestCaseDistances(string[] columns, Vector2Int start, Vector2Int target,
+            out float euclideanDistance, out float octagonalDistance,
             out float referenceShortestPathLength)
         {
             euclideanDistance = -1f;
+            octagonalDistance = TestPointSelector.CalculateOctagonalDistance(start, target);
             referenceShortestPathLength = -1f;
+
+            if (columns.Length == 11)
+            {
+                euclideanDistance = ParseCsvFloat(columns[5].Trim() + "." + columns[6].Trim());
+                octagonalDistance = ParseCsvFloat(columns[7].Trim() + "." + columns[8].Trim());
+                referenceShortestPathLength = ParseCsvFloat(columns[9].Trim() + "." + columns[10].Trim());
+                return;
+            }
 
             if (columns.Length == 9)
             {
                 euclideanDistance = ParseCsvFloat(columns[5].Trim() + "." + columns[6].Trim());
                 referenceShortestPathLength = ParseCsvFloat(columns[7].Trim() + "." + columns[8].Trim());
+                return;
+            }
+
+            if (columns.Length >= 8)
+            {
+                euclideanDistance = ParseCsvFloat(columns[5]);
+                octagonalDistance = ParseCsvFloat(columns[6]);
+                referenceShortestPathLength = ParseCsvFloat(columns[7]);
                 return;
             }
 
@@ -1442,6 +1521,7 @@ namespace Pathfinding.Visualization
                 ? "Unknown"
                 : testCase.distanceBucket;
             metrics.EuclideanDistance = testCase.euclideanDistance;
+            metrics.OctagonalDistance = testCase.octagonalDistance;
             metrics.ReferenceShortestPathLength = testCase.referenceShortestPathLength;
         }
 
@@ -1750,6 +1830,7 @@ namespace Pathfinding.Visualization
                     targetY = etc.TargetY,
                     distanceBucket = etc.Bucket.ToString(),
                     euclideanDistance = etc.EuclideanDistance,
+                    octagonalDistance = etc.OctagonalDistance,
                     referenceShortestPathLength = etc.ShortestPathLength
                 });
             }
@@ -1793,6 +1874,7 @@ namespace Pathfinding.Visualization
                     targetX = etc.TargetX, targetY = etc.TargetY,
                     distanceBucket = etc.Bucket.ToString(),
                     euclideanDistance = etc.EuclideanDistance,
+                    octagonalDistance = etc.OctagonalDistance,
                     referenceShortestPathLength = etc.ShortestPathLength
                 });
             }

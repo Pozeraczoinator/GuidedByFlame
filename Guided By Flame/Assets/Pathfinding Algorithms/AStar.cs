@@ -91,7 +91,7 @@ public class AStarPathfinder
                     }
 
                     neighborNode.G = newCostToNeighbor;
-                    neighborNode.H = GetManhattanDistance(neighborPos, target);
+                    neighborNode.H = GetOctagonalDistance(neighborPos, target);
                     neighborNode.Parent = currentNode;
                 }
             }
@@ -116,9 +116,14 @@ public class AStarPathfinder
         return path;
     }
 
-    // Heurystyka: Odległość Manhattan (suma różnic na osi X i Y)
-    private int GetManhattanDistance(Vector2Int a, Vector2Int b)
+    // Heurystyka oktagonalna: dopasowana do siatki z ruchem po przekatnych.
+    private int GetOctagonalDistance(Vector2Int a, Vector2Int b)
     {
-        return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y)) * 10;
+        int dstX = Mathf.Abs(a.x - b.x);
+        int dstY = Mathf.Abs(a.y - b.y);
+
+        if (dstX > dstY)
+            return 14 * dstY + 10 * (dstX - dstY);
+        return 14 * dstX + 10 * (dstY - dstX);
     }
 }
