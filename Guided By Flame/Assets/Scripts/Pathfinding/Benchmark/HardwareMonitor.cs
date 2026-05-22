@@ -207,7 +207,7 @@ namespace Pathfinding.Benchmark
                 try
                 {
                     var candidates = new List<TemperatureCandidate>();
-                    if (hardwareProperty?.GetValue(computer, null) is Array hardwareItems)
+                    if (hardwareProperty?.GetValue(computer, null) is System.Collections.IEnumerable hardwareItems)
                     {
                         foreach (object hardware in hardwareItems)
                             CollectCpuTemperatureCandidates(hardware, candidates);
@@ -248,8 +248,8 @@ namespace Pathfinding.Benchmark
             try
             {
                 var request = (HttpWebRequest)WebRequest.Create(url);
-                request.Timeout = 500;
-                request.ReadWriteTimeout = 500;
+                request.Timeout = 2000;
+                request.ReadWriteTimeout = 2000;
                 request.Proxy = null;
 
                 using (var response = (HttpWebResponse)request.GetResponse())
@@ -259,8 +259,9 @@ namespace Pathfinding.Benchmark
                     return ParseTemperatureFromLibreHardwareMonitorJson(reader.ReadToEnd());
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.LogWarning($"[HardwareMonitor] Web API odczyt z portu zawiódł: {ex.Message}");
                 return -1f;
             }
         }
@@ -273,7 +274,7 @@ namespace Pathfinding.Benchmark
             var candidates = new List<TemperatureCandidate>();
             MatchCollection matches = Regex.Matches(
                 json,
-                "\"Text\"\\s*:\\s*\"(?<name>[^\"]+)\"(?:(?!\"Text\"\\s*:).)*?\"Value\"\\s*:\\s*\"(?<value>-?\\d+(?:[\\.,]\\d+)?)\\s*(?:°C|C)?\"",
+                "\"Text\"\\s*:\\s*\"(?<name>[^\"]+)\"(?:(?!\"Text\"\\s*:).)*?\"Value\"\\s*:\\s*\"(?<value>-?\\d+(?:[\\.,]\\d+)?)[^\"]*\"",
                 RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
             foreach (Match match in matches)
@@ -369,7 +370,7 @@ namespace Pathfinding.Benchmark
             string hardwareName = GetPropertyString(hardware, "Name");
             bool isCpuHardware = ContainsInvariant(hardwareKind, "cpu") || ContainsInvariant(hardwareName, "cpu");
 
-            if (hardwareType.GetProperty("Sensors")?.GetValue(hardware, null) is Array sensors)
+            if (hardwareType.GetProperty("Sensors")?.GetValue(hardware, null) is System.Collections.IEnumerable sensors)
             {
                 foreach (object sensor in sensors)
                 {
@@ -400,7 +401,7 @@ namespace Pathfinding.Benchmark
                 }
             }
 
-            if (hardwareType.GetProperty("SubHardware")?.GetValue(hardware, null) is Array subHardware)
+            if (hardwareType.GetProperty("SubHardware")?.GetValue(hardware, null) is System.Collections.IEnumerable subHardware)
             {
                 foreach (object child in subHardware)
                     CollectCpuTemperatureCandidates(child, candidates);
