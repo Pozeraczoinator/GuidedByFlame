@@ -93,7 +93,7 @@ namespace Pathfinding.Algorithms
                     if (!inOpenSet)
                     {
                         // Koszt to wyłącznie heurystyka, dlatego gCost nie istnieje w klasie Node w ogóle
-                        neighbor.HCost = GetDistance(neighbor, targetNode);
+                        neighbor.HCost = GetOctagonalDistance(neighbor, targetNode);
                         neighbor.Parent = currentNode;
                         openSet.Add(neighbor);
                     }
@@ -165,13 +165,14 @@ namespace Pathfinding.Algorithms
             return neighbors;
         }
 
-        private int GetDistance(Node nodeA, Node nodeB)
+        private int GetOctagonalDistance(Node nodeA, Node nodeB)
         {
             int dstX = Math.Abs(nodeA.X - nodeB.X);
             int dstY = Math.Abs(nodeA.Y - nodeB.Y);
 
-            // Klasycznie GBFS używa po prostu Manhattan lub Euklidesowej
-            return dstX + dstY;
+            if (dstX > dstY)
+                return 14 * dstY + 10 * (dstX - dstY);
+            return 14 * dstX + 10 * (dstY - dstX);
         }
     }
 }

@@ -112,7 +112,7 @@ namespace Pathfinding.Algorithms
                     Vector2Int jp = jumpPoint.Value;
                     if (closedSet.Contains(jp)) continue;
 
-                    int moveCost = currentNode.GCost + GetDistance(currentNode.Pos, jp);
+                    int moveCost = currentNode.GCost + GetOctagonalDistance(currentNode.Pos, jp);
 
                     if (!allNodes.TryGetValue(jp, out Node jpNode))
                     {
@@ -125,7 +125,7 @@ namespace Pathfinding.Algorithms
                     if (moveCost < jpNode.GCost || !inOpenSet)
                     {
                         jpNode.GCost = moveCost;
-                        jpNode.HCost = GetDistance(jp, targetPos);
+                        jpNode.HCost = GetOctagonalDistance(jp, targetPos);
                         jpNode.Parent = currentNode;
 
                         if (!inOpenSet)
@@ -323,7 +323,7 @@ namespace Pathfinding.Algorithms
             
             // JPS zwraca jump points — rekonstruujemy pełną ścieżkę krok po kroku.
             // Między dwoma jump points poruszamy się: najpierw diagonalnie (min(dx,dy) kroków),
-            // potem ortogonalnie (|dx-dy| kroków). To odpowiada formule GetDistance (14*diag + 10*orth).
+            // potem ortogonalnie (|dx-dy| kroków). To odpowiada formule GetOctagonalDistance (14*diag + 10*orth).
             List<Vector2Int> fullPath = new List<Vector2Int>();
             Vector2Int current = startNode.Pos;
             
@@ -360,7 +360,7 @@ namespace Pathfinding.Algorithms
             result.PathLength = length;
         }
 
-        private int GetDistance(Vector2Int posA, Vector2Int posB)
+        private int GetOctagonalDistance(Vector2Int posA, Vector2Int posB)
         {
             int dstX = Math.Abs(posA.x - posB.x);
             int dstY = Math.Abs(posA.y - posB.y);

@@ -122,7 +122,7 @@ namespace Pathfinding.Algorithms
 
                     // DS3: Uwzględniamy wagę terenu (GetMovementCost).
                     float terrainCost = grid.GetMovementCost(neighbor.X, neighbor.Y);
-                    int moveCostToNeighbor = currentNode.GCost + (int)(GetDistance(currentNode, neighbor) * terrainCost);
+                    int moveCostToNeighbor = currentNode.GCost + (int)(GetOctagonalDistance(currentNode, neighbor) * terrainCost);
                     if (currentNode.Parent != null)
                     {
                         Vector2Int currentDir = new Vector2Int(currentNode.X - currentNode.Parent.X, currentNode.Y - currentNode.Parent.Y);
@@ -138,7 +138,7 @@ namespace Pathfinding.Algorithms
                     if (moveCostToNeighbor < neighbor.GCost || !inOpenSet)
                     {
                         neighbor.GCost = moveCostToNeighbor;
-                        neighbor.HCost = GetDistance(neighbor, targetNode) * greedyWeight;
+                        neighbor.HCost = GetOctagonalDistance(neighbor, targetNode) * greedyWeight;
                         neighbor.Parent = currentNode;
 
                         if (!inOpenSet)
@@ -214,7 +214,7 @@ namespace Pathfinding.Algorithms
             return neighbors;
         }
 
-        private int GetDistance(Node nodeA, Node nodeB)
+        private int GetOctagonalDistance(Node nodeA, Node nodeB)
         {
             int dstX = Math.Abs(nodeA.X - nodeB.X);
             int dstY = Math.Abs(nodeA.Y - nodeB.Y);

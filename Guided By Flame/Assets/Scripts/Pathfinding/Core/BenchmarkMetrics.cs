@@ -29,6 +29,7 @@ namespace Pathfinding.Core
         public float ObstacleDensity { get; set; }   // Procent przeszkód (0.0 - 1.0)
         public string DistanceBucket { get; set; } = "Unknown";
         public float EuclideanDistance { get; set; } = -1f;
+        public float OctagonalDistance { get; set; } = -1f;
         public float ReferenceShortestPathLength { get; set; } = -1f;
 
         // ─── Wynik ścieżki (z pierwszej udanej iteracji) ───
@@ -141,7 +142,7 @@ namespace Pathfinding.Core
         {
             return "TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;" +
                    "MapTopology;MapSeed;MapDensity;MapWidth;MapHeight;" +
-                   "DistanceBucket;EuclideanDistance;ReferenceShortestPathLength;" +
+                   "DistanceBucket;EuclideanDistance;OctagonalDistance;ReferenceShortestPathLength;" +
                    "PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;" +
                    "AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;" +
                    "AvgExecutionTicks;AvgGCAllocBytes;" +
@@ -157,12 +158,12 @@ namespace Pathfinding.Core
         {
             return string.Format(CultureInfo.InvariantCulture,
                 "{0};{1};{2};{3};{4};{5};{6};{7:F2};" +
-                "{8};{9};{10:F2};{11};{12};{13};{14:F3};{15:F3};" +
-                "{16};{17:F6};{18};{19};{20:F6};{21:F6};{22:F6};{23:F6};" +
-                "{24:F2};{25:F2};{26};{27:F4};{28};{29:F6};{30:F1}",
+                "{8};{9};{10:F2};{11};{12};{13};{14:F3};{15:F3};{16:F3};" +
+                "{17};{18:F6};{19};{20};{21:F6};{22:F6};{23:F6};{24:F6};" +
+                "{25:F2};{26:F2};{27};{28:F4};{29};{30:F6};{31:F1}",
                 TestID, AlgorithmName, StartX, StartY, TargetX, TargetY, Scenario, ObstacleDensity,
                 MapTopology, MapSeed, MapDensity, MapWidth, MapHeight, DistanceBucket,
-                EuclideanDistance, ReferenceShortestPathLength, PathFound, ColdStartTimeMs,
+                EuclideanDistance, OctagonalDistance, ReferenceShortestPathLength, PathFound, ColdStartTimeMs,
                 ColdStartTicks, ColdStartGCAllocBytes, AvgExecutionTimeMs, MinExecutionTimeMs,
                 MaxExecutionTimeMs, StdDevExecutionTimeMs, AvgExecutionTicks, AvgGCAllocBytes,
                 ExploredNodes, PathLength, DirectionChanges, PathSmoothness, CPUTemperature);

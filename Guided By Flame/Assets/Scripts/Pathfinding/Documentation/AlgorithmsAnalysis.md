@@ -54,6 +54,18 @@ Użycie wartości `10/14` zamiast `1/1.414` upraszcza porównywanie kosztów i o
 
 `h(n)` to oszacowanie odległości od węzła `n` do celu. Heurystyka nie sprawdza rzeczywistych przeszkód, lecz daje algorytmowi kierunek. Dobra heurystyka zmniejsza liczbę odwiedzonych pól, bo algorytm szybciej koncentruje się na obszarze prowadzącym do celu.
 
+### Heurystyki używane w projekcie
+
+| Algorytm | Heurystyka | Uwagi |
+|----------|------------|-------|
+| A\* | Oktagonalna | `14 * min(dx, dy) + 10 * |dx - dy|`, zgodna z ruchem 8-kierunkowym. |
+| Dijkstra | Brak | Priorytet bazuje tylko na `GCost`; metoda odległości liczy koszt ruchu, nie heurystykę do celu. |
+| Greedy Best-First Search | Oktagonalna | Używana jako jedyny priorytet `HCost`. |
+| Custom Greedy / Weighted A\* | Oktagonalna ważona | `HCost` jest mnożony przez `greedyWeight`. |
+| Jump Point Search | Oktagonalna | Używana w priorytecie A\*-podobnym dla jump pointów. |
+
+W kodzie algorytmów heurystyka jest zapisana w skali całkowitej `10/14`, bo te same wartości odpowiadają kosztom ruchu ortogonalnego i diagonalnego. W metrykach CSV `OctagonalDistance` jest zapisywana w skali geometrycznej `1.0/1.414`, aby dało się ją bezpośrednio porównać z `EuclideanDistance`, `PathLength` i `ReferenceShortestPathLength`.
+
 ### Koszt `f(n)`
 
 W A\* i algorytmach pochodnych:
@@ -256,13 +268,13 @@ Nie analizuje rzeczywistego kosztu dojścia od startu. Wybiera po prostu pole, k
 
 ### Heurystyka
 
-W implementacji użyto odległości Manhattan:
+W implementacji użyto odległości oktagonalnej:
 
 ```text
-h(n) = |dx| + |dy|
+h(n) = 14 * min(dx, dy) + 10 * |dx - dy|
 ```
 
-Jest to prosta i szybka heurystyka. W GBFS pełni rolę kierunkowskazu, a nie gwarancji optymalności.
+Jest to szybka heurystyka dopasowana do ruchu 8-kierunkowego. W GBFS pełni rolę kierunkowskazu, a nie gwarancji optymalności.
 
 ### Dlaczego ten algorytm jest ciekawy
 
@@ -463,6 +475,7 @@ Benchmark zapisuje do CSV między innymi:
 |---------|-----------|
 | `DistanceBucket` | Kategoria pary testowej: `Short`, `Medium` albo `Long`, liczona po realnej długości najkrótszej ścieżki. |
 | `EuclideanDistance` | Odległość w linii prostej między startem i celem; metryka pomocnicza. |
+| `OctagonalDistance` | Odległość oktagonalna między startem i celem, liczona dla ruchu 8-kierunkowego bez przeszkód. |
 | `ReferenceShortestPathLength` | Referencyjna długość najkrótszej ścieżki użyta przy bucketowaniu test case. |
 | `PathFound` | Czy udało się znaleźć ścieżkę. |
 | `ColdStartTimeMs` | Czas pierwszego uruchomienia. |
