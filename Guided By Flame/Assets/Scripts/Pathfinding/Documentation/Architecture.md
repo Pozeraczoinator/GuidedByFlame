@@ -24,7 +24,7 @@ Pathfinding/
 │   └── JumpPointSearchAlgorithm.cs# JPS na uniform gridzie
 │
 ├── Benchmark/                     # Infrastruktura pomiarowa
-│   ├── MovingObstacleManager.cs   # DS2: patrol NPC (RandomWalk 1-3)
+│   ├── MovingObstacleManager.cs   # DS1: patrol NPC (RandomWalk 1-3)
 │   ├── TestPointSelector.cs       # Bucketing po realnej długości ścieżki + deduplikacja
 │   ├── HardwareMonitor.cs         # Temp CPU (WMI), GC.Collect wrapper
 │   └── BatchGenerator.cs          # 4×4×4 = 64 mapy
@@ -111,10 +111,9 @@ Pathfinding/
 | Scenariusz | Opis |
 |------------|------|
 | **Static** | Mapa niezmienna |
-| **DS2** | Patrol NPC (RandomWalk 1-3 kroków, ping-pong) |
-| **DS3** | Dynamiczne wagi (Random/Radial/Linear) |
-| **DS4** | Dodawanie/usuwanie przeszkód na bazowej trasie NPC |
-| **DS5** | Deterministyczne bramy/drzwi otwierane lub zamykane na trasie |
+| **DS1** | Ruchome przeszkody patrolowe (RandomWalk, ping-pong) |
+| **DS2** | Deterministyczny harmonogram dynamicznych blokad w korytarzu start-cel |
+| **DS3** | Deterministyczne bramy/drzwi otwierane lub zamykane na trasie |
 
 **JPS jest WYKLUCZONY z DS3** (nie wspiera weighted gridów).
 
