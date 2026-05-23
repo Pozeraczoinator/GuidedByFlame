@@ -97,6 +97,7 @@ Pathfinding/
 | `GCAllocBytes` | long | Delta GC.GetTotalMemory |
 | `DirectionChanges` | int | Zmiany kierunku na ścieżce |
 | `PathSmoothness` | float | DirectionChanges / PathLength |
+| `PathRecalculations` | int | Liczba rekalkulacji trasy w scenariuszach dynamicznych |
 | `ColdStartTimeMs` | double | Iteracja 0 (JIT warm-up) |
 | `CPUTemperature` | float | Opcjonalnie WMI/OHM |
 | `EuclideanDistance` | float | Odległość w linii prostej między startem i celem |
@@ -151,7 +152,7 @@ Od wersji `feature/pathfinding-audit-determinism`:
 ## 9. Format Wyjściowy CSV
 
 **Separator**: średnik (`;`)
-**32 kolumny**:
+**33 kolumny**:
 ```
 TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;
 MapTopology;MapSeed;MapDensity;MapWidth;MapHeight;
@@ -159,7 +160,7 @@ DistanceBucket;EuclideanDistance;OctagonalDistance;ReferenceShortestPathLength;
 PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;
 AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;
 AvgExecutionTicks;AvgGCAllocBytes;
-ExploredNodes;PathLength;DirectionChanges;PathSmoothness;CPUTemperature
+ExploredNodes;PathLength;DirectionChanges;PathSmoothness;PathRecalculations;CPUTemperature
 ```
 
 ---

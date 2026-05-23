@@ -489,6 +489,7 @@ Benchmark zapisuje do CSV między innymi:
 | `PathLength` | Długość znalezionej ścieżki w jednostkach geometrycznych. |
 | `DirectionChanges` | Liczba zmian kierunku na trasie. |
 | `PathSmoothness` | `DirectionChanges / PathLength`; im bliżej zera, tym gładsza ścieżka. |
+| `PathRecalculations` | Liczba wymuszonych rekalkulacji ścieżki w scenariuszach dynamicznych. |
 
 ### Dlaczego `ExploredNodes` jest bardzo ważne
 

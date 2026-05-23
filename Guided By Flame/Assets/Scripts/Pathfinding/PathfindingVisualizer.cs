@@ -91,7 +91,7 @@ namespace Pathfinding.Visualization
         [Range(1, 200)]
         public int benchmarkIterations = 30;
 
-        [Tooltip("Nazwa pliku wynikowego CSV (32 kolumny, separator: średnik).")]
+        [Tooltip("Nazwa pliku wynikowego CSV (33 kolumny, separator: średnik).")]
         public string outputFileName = "benchmark_results.csv";
 
         [Header("═══ Monitoring Sprzętowy ═══")]
@@ -162,9 +162,9 @@ namespace Pathfinding.Visualization
         public int patrolLength = 6;
 
         [Header("═══ DS2: Blokady na Trasie ═══")]
-        [Tooltip("Ile pól na bazowej trasie zmodyfikować przez dodanie/usunięcie przeszkód.")]
-        [Range(1, 30)]
-        public int pathObstructionChanges = 6;
+        [Tooltip("Ile dynamicznych blokad DS2 może pojawić się podczas jednego przejścia.")]
+        [Range(1, 60)]
+        public int pathObstructionChanges = 12;
 
         [Tooltip("Co który krok bazowej trasy rozważać jako kandydat do blokady.")]
         [Range(2, 12)]
@@ -260,6 +260,17 @@ namespace Pathfinding.Visualization
             public BenchmarkMetrics Metrics;
             public Pathfinding.Core.PathfindingResult VisualResult;
             public bool Cancelled;
+        }
+
+        private class DS2DynamicState
+        {
+            public readonly System.Random Rng;
+            public readonly HashSet<Vector2Int> BlockedCells = new HashSet<Vector2Int>();
+
+            public DS2DynamicState(int seed)
+            {
+                Rng = new System.Random(seed);
+            }
         }
 
         private bool IsMovingObstacleCell(int x, int y)
@@ -543,6 +554,11 @@ namespace Pathfinding.Visualization
                             {
                                 StartCoroutine(VisualizeDS1ReplanningRoutine(
                                     algorithm, visualResult, startPos, targetPos, testId));
+                            }
+                            else if (scenario == ScenarioType.DS2_PathObstruction)
+                            {
+                                StartCoroutine(VisualizeDS2ReplanningRoutine(
+                                    algorithm, startPos, targetPos, testId));
                             }
                             else
                             {
@@ -828,7 +844,6 @@ namespace Pathfinding.Visualization
 
             if (scenario == ScenarioType.DS2_PathObstruction)
             {
-                scenarioChanges = ApplyDS2PathObstruction(startPos, targetPos, testId);
                 return;
             }
 
@@ -847,40 +862,109 @@ namespace Pathfinding.Visualization
             return manager;
         }
 
-        private List<Vector2Int> ApplyDS2PathObstruction(Vector2Int startPos, Vector2Int targetPos, int testId)
+        private DS2DynamicState CreateDS2DynamicState(int testId)
+        {
+            int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId + 4000;
+            return new DS2DynamicState(seed);
+        }
+
+        private int GetDS2ObstructionLimit()
+        {
+            return Mathf.Max(12, pathObstructionChanges);
+        }
+
+        private List<Vector2Int> ApplyDS2DynamicObstructions(
+            GridMap grid,
+            List<Vector2Int> plannedPath,
+            int nextStepIndex,
+            Vector2Int startPos,
+            Vector2Int currentPos,
+            Vector2Int targetPos,
+            DS2DynamicState state)
         {
             var changes = new List<Vector2Int>();
-            var baseline = new AStarAlgorithm().FindPath(_gridMap, startPos, targetPos);
-            if (!baseline.PathFound || baseline.Path == null || baseline.Path.Count == 0)
+            int obstructionLimit = GetDS2ObstructionLimit();
+            if (plannedPath == null || plannedPath.Count == 0 || state.BlockedCells.Count >= obstructionLimit)
                 return changes;
 
-            int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId + 4000;
-            var rng = new System.Random(seed);
-            int spacing = Mathf.Max(2, pathObstructionSpacing);
+            int spacing = Mathf.Max(1, pathObstructionSpacing);
+            if (nextStepIndex > 0 && nextStepIndex % spacing != 0)
+                return changes;
 
-            for (int i = spacing; i < baseline.Path.Count - 1 && changes.Count < pathObstructionChanges; i += spacing)
+            int anchorIndex = Mathf.Min(plannedPath.Count - 1, nextStepIndex + spacing);
+            int clusterBudget = Mathf.Min(Mathf.Max(1, obstructionLimit / 4),
+                obstructionLimit - state.BlockedCells.Count);
+
+            var candidates = BuildDS2ObstructionCandidates(plannedPath, anchorIndex);
+            ShuffleList(candidates, state.Rng);
+
+            // Pierwsze pole na Ĺ›cieĹĽce zostawiamy jako priorytet, ĹĽeby blokada faktycznie wymuszaĹ‚a rekalkulacjÄ™.
+            Vector2Int anchor = plannedPath[anchorIndex];
+            TryAddDS2Block(grid, anchor, startPos, currentPos, targetPos, state, changes);
+
+            foreach (Vector2Int candidate in candidates)
             {
-                Vector2Int pos = baseline.Path[i];
-                if (IsProtectedPoint(pos, startPos, targetPos))
-                    continue;
-
-                if (_gridMap.IsWalkable(pos))
-                {
-                    _gridMap.SetWalkable(pos, false);
-                    changes.Add(pos);
-                }
-
-                if (changes.Count >= pathObstructionChanges)
+                if (changes.Count >= clusterBudget || state.BlockedCells.Count >= obstructionLimit)
                     break;
 
-                if (TryFindNearbyObstacleToOpen(pos, startPos, targetPos, rng, out Vector2Int opened))
-                {
-                    _gridMap.SetWalkable(opened, true);
-                    changes.Add(opened);
-                }
+                TryAddDS2Block(grid, candidate, startPos, currentPos, targetPos, state, changes);
             }
 
             return changes;
+        }
+
+        private List<Vector2Int> BuildDS2ObstructionCandidates(List<Vector2Int> plannedPath, int anchorIndex)
+        {
+            var candidates = new List<Vector2Int>();
+            Vector2Int anchor = plannedPath[anchorIndex];
+            Vector2Int previous = anchorIndex > 0 ? plannedPath[anchorIndex - 1] : anchor;
+            Vector2Int next = anchorIndex + 1 < plannedPath.Count ? plannedPath[anchorIndex + 1] : anchor;
+            Vector2Int direction = new Vector2Int(Math.Sign(next.x - previous.x), Math.Sign(next.y - previous.y));
+            if (direction == Vector2Int.zero)
+                direction = Vector2Int.right;
+
+            Vector2Int perpendicular = new Vector2Int(-direction.y, direction.x);
+            if (perpendicular == Vector2Int.zero)
+                perpendicular = Vector2Int.up;
+
+            candidates.Add(anchor + perpendicular);
+            candidates.Add(anchor - perpendicular);
+            candidates.Add(anchor + direction);
+            candidates.Add(anchor - direction);
+            candidates.Add(anchor + perpendicular + direction);
+            candidates.Add(anchor - perpendicular + direction);
+
+            int lookaheadLimit = Mathf.Min(plannedPath.Count, anchorIndex + pathObstructionSpacing * 2 + 1);
+            for (int i = anchorIndex + 1; i < lookaheadLimit; i++)
+                candidates.Add(plannedPath[i]);
+
+            return candidates;
+        }
+
+        private void TryAddDS2Block(
+            GridMap grid,
+            Vector2Int pos,
+            Vector2Int startPos,
+            Vector2Int currentPos,
+            Vector2Int targetPos,
+            DS2DynamicState state,
+            List<Vector2Int> changes)
+        {
+            if (!grid.IsValidCoordinate(pos.x, pos.y))
+                return;
+
+            if (pos == startPos || pos == currentPos || IsProtectedPoint(pos, currentPos, targetPos))
+                return;
+
+            if (_originalGridMap != null && !_originalGridMap.IsWalkable(pos))
+                return;
+
+            if (!grid.IsWalkable(pos) || state.BlockedCells.Contains(pos))
+                return;
+
+            grid.SetWalkable(pos, false);
+            state.BlockedCells.Add(pos);
+            changes.Add(pos);
         }
 
         private List<Vector2Int> ApplyDS3DoorGateToggle(Vector2Int startPos, Vector2Int targetPos, int testId)
@@ -930,34 +1014,6 @@ namespace Pathfinding.Visualization
             }
 
             return changes;
-        }
-
-        private bool TryFindNearbyObstacleToOpen(
-            Vector2Int center, Vector2Int startPos, Vector2Int targetPos,
-            System.Random rng, out Vector2Int obstacle)
-        {
-            var candidates = new List<Vector2Int>();
-            for (int dx = -2; dx <= 2; dx++)
-            {
-                for (int dy = -2; dy <= 2; dy++)
-                {
-                    Vector2Int pos = new Vector2Int(center.x + dx, center.y + dy);
-                    if (!_gridMap.IsValidCoordinate(pos.x, pos.y) || IsProtectedPoint(pos, startPos, targetPos))
-                        continue;
-
-                    if (!_gridMap.IsWalkable(pos))
-                        candidates.Add(pos);
-                }
-            }
-
-            if (candidates.Count == 0)
-            {
-                obstacle = default;
-                return false;
-            }
-
-            obstacle = candidates[rng.Next(candidates.Count)];
-            return true;
         }
 
         private bool IsProtectedPoint(Vector2Int pos, Vector2Int startPos, Vector2Int targetPos)
@@ -1014,6 +1070,24 @@ namespace Pathfinding.Visualization
             }
         }
 
+        private Pathfinding.Core.PathfindingResult FindPathForVisualization(
+            IPathfindingAlgorithm algorithm,
+            GridMap grid,
+            Vector2Int startPos,
+            Vector2Int targetPos)
+        {
+            bool previousHistoryRecording = PathfindingRuntimeOptions.RecordExploredNodesHistory;
+            try
+            {
+                PathfindingRuntimeOptions.RecordExploredNodesHistory = true;
+                return algorithm.FindPath(grid, startPos, targetPos);
+            }
+            finally
+            {
+                PathfindingRuntimeOptions.RecordExploredNodesHistory = previousHistoryRecording;
+            }
+        }
+
         private IEnumerator VisualizeDS1ReplanningRoutine(
             IPathfindingAlgorithm algorithm,
             Pathfinding.Core.PathfindingResult initialResult,
@@ -1040,7 +1114,7 @@ namespace Pathfinding.Visualization
             }
 
             Vector2Int currentPos = startPos;
-            Pathfinding.Core.PathfindingResult currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
+            Pathfinding.Core.PathfindingResult currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
             int replanCount = 0;
             int safetyLimit = visualGrid.Width * visualGrid.Height * 2;
 
@@ -1078,7 +1152,7 @@ namespace Pathfinding.Visualization
                             _basemapRenderers[targetPos.x, targetPos.y].color = colorTarget;
                         }
                         Debug.Log($"[Visualizer][DS1] {algorithm.AlgorithmName}: rekalkulacja #{replanCount}, zablokowany krok {nextPos}.");
-                        currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
+                        currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
                         replanned = true;
                         yield return new WaitForSeconds(replanPauseDuration);
                         break;
@@ -1095,10 +1169,93 @@ namespace Pathfinding.Visualization
                 }
 
                 if (!replanned && currentPos != targetPos)
-                    currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
+                    currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
             }
 
             Debug.Log($"[Visualizer][DS1] {algorithm.AlgorithmName}: wizualizacja zakończona, rekalkulacje={replanCount}.");
+            _isVisualizing = false;
+        }
+
+        private IEnumerator VisualizeDS2ReplanningRoutine(
+            IPathfindingAlgorithm algorithm,
+            Vector2Int startPos,
+            Vector2Int targetPos,
+            int testId)
+        {
+            _isVisualizing = true;
+
+            GridMap visualGrid = _originalGridMap.Clone();
+            DS2DynamicState ds2State = CreateDS2DynamicState(testId);
+            _gridMap = visualGrid;
+            RefreshBasemapColors();
+
+            if (_agentObject != null)
+            {
+                _agentObject.SetActive(true);
+                _agentObject.transform.position = new Vector3(startPos.x, startPos.y, -2f);
+            }
+
+            Vector2Int currentPos = startPos;
+            Pathfinding.Core.PathfindingResult currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
+            int replanCount = 0;
+            int safetyLimit = visualGrid.Width * visualGrid.Height * 2;
+
+            while (currentPos != targetPos && safetyLimit-- > 0)
+            {
+                yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, true));
+
+                if (currentResult == null || !currentResult.PathFound || currentResult.Path == null || currentResult.Path.Count == 0)
+                {
+                    Debug.LogWarning($"[Visualizer][DS2] {algorithm.AlgorithmName}: brak dalszej drogi po {replanCount} rekalkulacjach.");
+                    break;
+                }
+
+                bool replanned = false;
+                for (int i = 0; i < currentResult.Path.Count; i++)
+                {
+                    Vector2Int nextPos = currentResult.Path[i];
+                    List<Vector2Int> changes = ApplyDS2DynamicObstructions(visualGrid, currentResult.Path, i,
+                        startPos, currentPos, targetPos, ds2State);
+
+                    _gridMap = visualGrid;
+                    RefreshBasemapColors();
+                    ShowChangeMarkers(changes);
+                    yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, false));
+                    ShowChangeMarkers(changes);
+
+                    if (!CanMoveOnCurrentGrid(visualGrid, currentPos, nextPos))
+                    {
+                        replanCount++;
+                        if (_basemapRenderers != null)
+                        {
+                            _basemapRenderers[currentPos.x, currentPos.y].color = colorCurrentAgentCell;
+                            _basemapRenderers[nextPos.x, nextPos.y].color = colorReplanPause;
+                            _basemapRenderers[startPos.x, startPos.y].color = colorStart;
+                            _basemapRenderers[targetPos.x, targetPos.y].color = colorTarget;
+                        }
+
+                        Debug.Log($"[Visualizer][DS2] {algorithm.AlgorithmName}: rekalkulacja #{replanCount}, zablokowany krok {nextPos}.");
+                        currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
+                        replanned = true;
+                        yield return new WaitForSeconds(replanPauseDuration);
+                        break;
+                    }
+
+                    yield return StartCoroutine(MoveAgentTo(nextPos));
+                    currentPos = nextPos;
+
+                    if (_basemapRenderers != null && currentPos != targetPos)
+                        _basemapRenderers[currentPos.x, currentPos.y].color = colorPath;
+
+                    if (currentPos == targetPos || --safetyLimit <= 0)
+                        break;
+                }
+
+                if (!replanned && currentPos != targetPos)
+                    currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
+            }
+
+            Debug.Log($"[Visualizer][DS2] {algorithm.AlgorithmName}: wizualizacja zakoĹ„czona, rekalkulacje={replanCount}, blokady={ds2State.BlockedCells.Count}.");
             _isVisualizing = false;
         }
 
@@ -1175,6 +1332,13 @@ namespace Pathfinding.Visualization
             if (scenario == ScenarioType.DS1_MovingObstacles)
             {
                 MeasureDS1DynamicAlgorithm(algorithm, startPos, targetPos, testId, density,
+                    out metrics, out visualResult);
+                return;
+            }
+
+            if (scenario == ScenarioType.DS2_PathObstruction)
+            {
+                MeasureDS2DynamicAlgorithm(algorithm, startPos, targetPos, testId, density,
                     out metrics, out visualResult);
                 return;
             }
@@ -1338,6 +1502,127 @@ namespace Pathfinding.Visualization
                     if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
                     {
                         needsReplan = true;
+                        combinedResult.PathRecalculations++;
+                        break;
+                    }
+
+                    Vector2Int previousPos = currentPos;
+                    currentPos = nextPos;
+                    combinedResult.Path.Add(currentPos);
+                    combinedResult.PathLength += GetStepLength(currentPos, previousPos);
+
+                    if (currentPos == targetPos)
+                    {
+                        combinedResult.PathFound = true;
+                        return combinedResult;
+                    }
+
+                    if (--safetyLimit <= 0)
+                        return combinedResult;
+                }
+
+                if (!needsReplan && currentPos != targetPos)
+                    continue;
+            }
+
+            combinedResult.PathFound = currentPos == targetPos;
+            return combinedResult;
+        }
+
+        private void MeasureDS2DynamicAlgorithm(
+            IPathfindingAlgorithm algorithm,
+            Vector2Int startPos, Vector2Int targetPos,
+            int testId, float density,
+            out BenchmarkMetrics metrics, out Pathfinding.Core.PathfindingResult visualResult)
+        {
+            var allResults = new List<Pathfinding.Core.PathfindingResult>(benchmarkIterations);
+            bool previousHistoryRecording = PathfindingRuntimeOptions.RecordExploredNodesHistory;
+
+            try
+            {
+                for (int iter = 0; iter < benchmarkIterations; iter++)
+                {
+                    PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
+
+                    long gcBefore = iter == 0 && forceGcBeforeColdStart
+                        ? HardwareMonitor.ForceGCAndGetMemory()
+                        : GC.GetTotalMemory(false);
+
+                    Pathfinding.Core.PathfindingResult result =
+                        RunDS2DynamicSimulation(algorithm, startPos, targetPos, testId);
+
+                    long gcAfter = GC.GetTotalMemory(false);
+                    result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
+
+                    if (result.PathFound)
+                        result.CalculateSmoothnessMetrics();
+
+                    allResults.Add(result);
+                }
+            }
+            finally
+            {
+                PathfindingRuntimeOptions.RecordExploredNodesHistory = previousHistoryRecording;
+            }
+
+            visualResult = allResults.Count > 0 ? allResults[0] : null;
+            metrics = new BenchmarkMetrics
+            {
+                AlgorithmName = algorithm.AlgorithmName,
+                TestID = testId,
+                StartX = startPos.x,
+                StartY = startPos.y,
+                TargetX = targetPos.x,
+                TargetY = targetPos.y,
+                Scenario = "DS2_PathObstruction",
+                ObstacleDensity = density,
+                MapTopology = _activeMapTopology,
+                MapSeed = _activeMapSeed,
+                MapDensity = _activeMapDensity,
+                MapWidth = _activeMapWidth,
+                MapHeight = _activeMapHeight
+            };
+            metrics.AggregateFrom(allResults);
+        }
+
+        private Pathfinding.Core.PathfindingResult RunDS2DynamicSimulation(
+            IPathfindingAlgorithm algorithm,
+            Vector2Int startPos, Vector2Int targetPos,
+            int testId)
+        {
+            GridMap simulationGrid = _originalGridMap.Clone();
+            DS2DynamicState ds2State = CreateDS2DynamicState(testId);
+
+            var combinedResult = new Pathfinding.Core.PathfindingResult
+            {
+                PathFound = false,
+                Path = new List<Vector2Int>()
+            };
+
+            Vector2Int currentPos = startPos;
+            int safetyLimit = simulationGrid.Width * simulationGrid.Height * 2;
+
+            while (currentPos != targetPos && safetyLimit-- > 0)
+            {
+                Pathfinding.Core.PathfindingResult currentPlan =
+                    algorithm.FindPath(simulationGrid, currentPos, targetPos);
+
+                AccumulateSearchMetrics(combinedResult, currentPlan);
+
+                if (!currentPlan.PathFound || currentPlan.Path == null || currentPlan.Path.Count == 0)
+                    return combinedResult;
+
+                bool needsReplan = false;
+                for (int pathIndex = 0; pathIndex < currentPlan.Path.Count && currentPos != targetPos; pathIndex++)
+                {
+                    Vector2Int nextPos = currentPlan.Path[pathIndex];
+                    ApplyDS2DynamicObstructions(simulationGrid, currentPlan.Path, pathIndex,
+                        startPos, currentPos, targetPos, ds2State);
+
+                    if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
+                    {
+                        needsReplan = true;
+                        combinedResult.PathRecalculations++;
                         break;
                     }
 
@@ -1531,6 +1816,17 @@ namespace Pathfinding.Visualization
             for (int i = list.Count - 1; i > 0; i--)
             {
                 int j = _shuffleRng.Next(0, i + 1);
+                T temp = list[i];
+                list[i] = list[j];
+                list[j] = temp;
+            }
+        }
+
+        private void ShuffleList<T>(List<T> list, System.Random rng)
+        {
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(0, i + 1);
                 T temp = list[i];
                 list[i] = list[j];
                 list[j] = temp;
@@ -1804,6 +2100,35 @@ namespace Pathfinding.Visualization
         // ─────────────────────────────────────────────────────────
         //  WIZUALIZACJA (ANIMACJA ŚCIEŻKI)
         // ─────────────────────────────────────────────────────────
+
+        private void ShowChangeMarkers(IEnumerable<Vector2Int> positions)
+        {
+            if (positions == null)
+                return;
+
+            foreach (var pos in positions)
+            {
+                if (pos.x < 0 || pos.x >= _gridMap.Width || pos.y < 0 || pos.y >= _gridMap.Height)
+                    continue;
+
+                if (_spawnedChangeMarkers[pos.x, pos.y] == null && changeMarkerSprite != null)
+                {
+                    GameObject marker = new GameObject($"ChangeMarker_{pos.x}_{pos.y}");
+                    marker.transform.position = new Vector3(pos.x, pos.y, -0.2f);
+                    marker.transform.parent = this.transform;
+                    marker.transform.localScale = new Vector3(0.95f, 0.95f, 1f);
+
+                    SpriteRenderer markerRenderer = marker.AddComponent<SpriteRenderer>();
+                    markerRenderer.sprite = changeMarkerSprite;
+                    markerRenderer.sortingOrder = 2;
+
+                    _spawnedChangeMarkers[pos.x, pos.y] = marker;
+                }
+
+                if (_spawnedChangeMarkers[pos.x, pos.y] != null)
+                    _spawnedChangeMarkers[pos.x, pos.y].SetActive(true);
+            }
+        }
 
         private IEnumerator VisualizeRoutine(
             Pathfinding.Core.PathfindingResult result,

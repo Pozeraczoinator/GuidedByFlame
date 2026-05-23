@@ -71,6 +71,12 @@ namespace Pathfinding.Core
         public float PathSmoothness { get; set; }
 
         /// <summary>
+        /// Liczba wymuszonych rekalkulacji trasy w scenariuszach dynamicznych.
+        /// Dla scenariuszy statycznych pozostaje 0.
+        /// </summary>
+        public int PathRecalculations { get; set; }
+
+        /// <summary>
         /// Oblicza metryki gładkości ścieżki na podstawie listy Path.
         /// Wywołaj po zakończeniu FindPath() i ustaleniu Path.
         /// Złożoność: O(P) gdzie P = Path.Count.
