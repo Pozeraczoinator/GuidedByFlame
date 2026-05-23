@@ -1040,7 +1040,7 @@ namespace Pathfinding.Visualization
             }
 
             Vector2Int currentPos = startPos;
-            Pathfinding.Core.PathfindingResult currentResult = initialResult;
+            Pathfinding.Core.PathfindingResult currentResult = algorithm.FindPath(visualGrid, currentPos, targetPos);
             int replanCount = 0;
             int safetyLimit = visualGrid.Width * visualGrid.Height * 2;
 
@@ -1048,14 +1048,14 @@ namespace Pathfinding.Visualization
             {
                 yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, true));
 
-                if (currentResult == null || !currentResult.PathFound || currentResult.Path == null || currentResult.Path.Count < 2)
+                if (currentResult == null || !currentResult.PathFound || currentResult.Path == null || currentResult.Path.Count == 0)
                 {
                     Debug.LogWarning($"[Visualizer][DS1] {algorithm.AlgorithmName}: brak dalszej drogi po {replanCount} rekalkulacjach.");
                     break;
                 }
 
                 bool replanned = false;
-                for (int i = 1; i < currentResult.Path.Count; i++)
+                for (int i = 0; i < currentResult.Path.Count; i++)
                 {
                     Vector2Int nextPos = currentResult.Path[i];
 
@@ -1067,7 +1067,7 @@ namespace Pathfinding.Visualization
                     RefreshBasemapColors();
                     yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, false));
 
-                    if (!visualGrid.IsWalkable(nextPos))
+                    if (!CanMoveOnCurrentGrid(visualGrid, currentPos, nextPos))
                     {
                         replanCount++;
                         if (_basemapRenderers != null)
@@ -1172,6 +1172,13 @@ namespace Pathfinding.Visualization
             int testId, float density,
             out BenchmarkMetrics metrics, out Pathfinding.Core.PathfindingResult visualResult)
         {
+            if (scenario == ScenarioType.DS1_MovingObstacles)
+            {
+                MeasureDS1DynamicAlgorithm(algorithm, startPos, targetPos, testId, density,
+                    out metrics, out visualResult);
+                return;
+            }
+
             var allResults = new List<Pathfinding.Core.PathfindingResult>(benchmarkIterations);
             bool previousHistoryRecording = PathfindingRuntimeOptions.RecordExploredNodesHistory;
 
@@ -1232,6 +1239,166 @@ namespace Pathfinding.Visualization
                 MapHeight = _activeMapHeight
             };
             metrics.AggregateFrom(allResults);
+        }
+
+        private void MeasureDS1DynamicAlgorithm(
+            IPathfindingAlgorithm algorithm,
+            Vector2Int startPos, Vector2Int targetPos,
+            int testId, float density,
+            out BenchmarkMetrics metrics, out Pathfinding.Core.PathfindingResult visualResult)
+        {
+            var allResults = new List<Pathfinding.Core.PathfindingResult>(benchmarkIterations);
+            bool previousHistoryRecording = PathfindingRuntimeOptions.RecordExploredNodesHistory;
+
+            try
+            {
+                for (int iter = 0; iter < benchmarkIterations; iter++)
+                {
+                    PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
+
+                    long gcBefore = iter == 0 && forceGcBeforeColdStart
+                        ? HardwareMonitor.ForceGCAndGetMemory()
+                        : GC.GetTotalMemory(false);
+
+                    Pathfinding.Core.PathfindingResult result =
+                        RunDS1DynamicSimulation(algorithm, startPos, targetPos, testId);
+
+                    long gcAfter = GC.GetTotalMemory(false);
+                    result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
+
+                    if (result.PathFound)
+                        result.CalculateSmoothnessMetrics();
+
+                    allResults.Add(result);
+                }
+            }
+            finally
+            {
+                PathfindingRuntimeOptions.RecordExploredNodesHistory = previousHistoryRecording;
+            }
+
+            visualResult = allResults.Count > 0 ? allResults[0] : null;
+            metrics = new BenchmarkMetrics
+            {
+                AlgorithmName = algorithm.AlgorithmName,
+                TestID = testId,
+                StartX = startPos.x,
+                StartY = startPos.y,
+                TargetX = targetPos.x,
+                TargetY = targetPos.y,
+                Scenario = "DS1_MovingObstacles",
+                ObstacleDensity = density,
+                MapTopology = _activeMapTopology,
+                MapSeed = _activeMapSeed,
+                MapDensity = _activeMapDensity,
+                MapWidth = _activeMapWidth,
+                MapHeight = _activeMapHeight
+            };
+            metrics.AggregateFrom(allResults);
+        }
+
+        private Pathfinding.Core.PathfindingResult RunDS1DynamicSimulation(
+            IPathfindingAlgorithm algorithm,
+            Vector2Int startPos, Vector2Int targetPos,
+            int testId)
+        {
+            GridMap simulationGrid = _originalGridMap.Clone();
+            MovingObstacleManager simulationManager = CreateDS1ManagerForCurrentTest(
+                simulationGrid, startPos, targetPos, testId);
+            simulationManager.StepAll(simulationGrid);
+            simulationManager.VerifyObstaclePositions(simulationGrid);
+
+            var combinedResult = new Pathfinding.Core.PathfindingResult
+            {
+                PathFound = false,
+                Path = new List<Vector2Int>()
+            };
+
+            Vector2Int currentPos = startPos;
+            int safetyLimit = simulationGrid.Width * simulationGrid.Height * 2;
+
+            while (currentPos != targetPos && safetyLimit-- > 0)
+            {
+                Pathfinding.Core.PathfindingResult currentPlan =
+                    algorithm.FindPath(simulationGrid, currentPos, targetPos);
+
+                AccumulateSearchMetrics(combinedResult, currentPlan);
+
+                if (!currentPlan.PathFound || currentPlan.Path == null || currentPlan.Path.Count == 0)
+                    return combinedResult;
+
+                bool needsReplan = false;
+                for (int pathIndex = 0; pathIndex < currentPlan.Path.Count && currentPos != targetPos; pathIndex++)
+                {
+                    Vector2Int nextPos = currentPlan.Path[pathIndex];
+
+                    simulationManager.StepAll(simulationGrid);
+                    simulationManager.VerifyObstaclePositions(simulationGrid);
+
+                    if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
+                    {
+                        needsReplan = true;
+                        break;
+                    }
+
+                    Vector2Int previousPos = currentPos;
+                    currentPos = nextPos;
+                    combinedResult.Path.Add(currentPos);
+                    combinedResult.PathLength += GetStepLength(currentPos, previousPos);
+
+                    if (currentPos == targetPos)
+                    {
+                        combinedResult.PathFound = true;
+                        return combinedResult;
+                    }
+
+                    if (--safetyLimit <= 0)
+                        return combinedResult;
+                }
+
+                if (!needsReplan && currentPos != targetPos)
+                    continue;
+            }
+
+            combinedResult.PathFound = currentPos == targetPos;
+            return combinedResult;
+        }
+
+        private void AccumulateSearchMetrics(
+            Pathfinding.Core.PathfindingResult total,
+            Pathfinding.Core.PathfindingResult partial)
+        {
+            if (partial == null)
+                return;
+
+            total.ExecutionTimeMs += partial.ExecutionTimeMs;
+            total.ExecutionTicks += partial.ExecutionTicks;
+            total.ExploredNodes += partial.ExploredNodes;
+        }
+
+        private bool CanMoveOnCurrentGrid(GridMap grid, Vector2Int from, Vector2Int to)
+        {
+            int dx = to.x - from.x;
+            int dy = to.y - from.y;
+
+            if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1 || (dx == 0 && dy == 0))
+                return false;
+
+            if (!grid.IsWalkable(from))
+                return false;
+
+            if (!grid.IsWalkable(to))
+                return false;
+
+            if (dx != 0 && dy != 0)
+                return grid.IsWalkable(from.x + dx, from.y) && grid.IsWalkable(from.x, from.y + dy);
+
+            return true;
+        }
+
+        private float GetStepLength(Vector2Int to, Vector2Int from)
+        {
+            return to.x != from.x && to.y != from.y ? 1.414f : 1.0f;
         }
 
         private IEnumerator MeasureAlgorithmBatched(
