@@ -81,7 +81,6 @@ Pathfinding/
 | Długość ortogonalna (PathLength) | 1.0f |
 | Długość diagonalna (PathLength) | 1.414f |
 | Domyślny koszt terenu | 1.0f |
-| Koszty DS3 | 1.0, 2.0, 5.0, 10.0 |
 
 ---
 
@@ -114,8 +113,6 @@ Pathfinding/
 | **DS1** | Ruchome przeszkody patrolowe (RandomWalk, ping-pong) |
 | **DS2** | Deterministyczny harmonogram dynamicznych blokad w korytarzu start-cel |
 | **DS3** | Deterministyczne bramy/drzwi otwierane lub zamykane na trasie |
-
-**JPS jest WYKLUCZONY z DS3** (nie wspiera weighted gridów).
 
 ---
 

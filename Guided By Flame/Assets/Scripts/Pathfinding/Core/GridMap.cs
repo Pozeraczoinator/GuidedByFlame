@@ -60,13 +60,13 @@ namespace Pathfinding.Core
                     _movementCost[x, y] = 1.0f;
         }
 
-        // ─── Wagi terenu (DS3: Weighted Terrain) ───
+        // ─── Wagi terenu (opcjonalne scenariusze ważone) ───
 
         /// <summary>
         /// Zwraca koszt wejścia na pole (x, y). Domyślnie 1.0f.
         /// Wartości > 1.0 oznaczają trudniejszy teren (np. błoto, ogień).
         /// Używane przez algorytmy A*, Dijkstra i CustomGreedy w scenariuszach z wagami terenu.
-        /// JPS pomijany w DS3 (nie wspiera weighted gridów).
+        /// JPS nie powinien być używany dla map ważonych.
         /// </summary>
         public float GetMovementCost(int x, int y)
         {
