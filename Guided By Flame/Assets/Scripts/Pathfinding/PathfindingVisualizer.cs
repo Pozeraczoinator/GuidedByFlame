@@ -264,12 +264,14 @@ namespace Pathfinding.Visualization
 
         private class DS2DynamicState
         {
-            public readonly System.Random Rng;
+            public readonly List<List<Vector2Int>> Schedule;
+            public readonly System.Random Rng = new System.Random(0);
             public readonly HashSet<Vector2Int> BlockedCells = new HashSet<Vector2Int>();
+            public int NextEventIndex;
 
-            public DS2DynamicState(int seed)
+            public DS2DynamicState(List<List<Vector2Int>> schedule)
             {
-                Rng = new System.Random(seed);
+                Schedule = schedule;
             }
         }
 
@@ -862,15 +864,184 @@ namespace Pathfinding.Visualization
             return manager;
         }
 
-        private DS2DynamicState CreateDS2DynamicState(int testId)
+        private DS2DynamicState CreateDS2DynamicState(
+            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos, int testId)
         {
             int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId + 4000;
-            return new DS2DynamicState(seed);
+            var rng = new System.Random(seed);
+            return new DS2DynamicState(BuildDS2ObstructionSchedule(baseGrid, startPos, targetPos, rng));
         }
 
         private int GetDS2ObstructionLimit()
         {
             return Mathf.Max(12, pathObstructionChanges);
+        }
+
+        private List<List<Vector2Int>> BuildDS2ObstructionSchedule(
+            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos, System.Random rng)
+        {
+            int obstructionLimit = GetDS2ObstructionLimit();
+            int clusterSize = Mathf.Clamp(obstructionLimit / 4, 2, 4);
+            int eventCount = Mathf.Max(1, Mathf.CeilToInt(obstructionLimit / (float)clusterSize));
+            var schedule = new List<List<Vector2Int>>(eventCount);
+            var candidates = BuildDS2EuclideanCorridorCandidates(baseGrid, startPos, targetPos);
+            var used = new HashSet<Vector2Int>();
+
+            ShuffleList(candidates, rng);
+
+            for (int eventIndex = 0; eventIndex < eventCount && used.Count < obstructionLimit; eventIndex++)
+            {
+                float targetProgress = (eventIndex + 1f) / (eventCount + 1f);
+                Vector2Int anchor;
+                if (!TryPickDS2Candidate(candidates, used, startPos, targetPos, targetProgress, out anchor))
+                    break;
+
+                var eventCells = new List<Vector2Int>();
+                AddDS2ScheduledCell(anchor, used, eventCells, obstructionLimit);
+
+                var nearby = new List<Vector2Int>();
+                foreach (Vector2Int candidate in candidates)
+                {
+                    if (used.Contains(candidate))
+                        continue;
+
+                    if (Math.Abs(candidate.x - anchor.x) <= 2 && Math.Abs(candidate.y - anchor.y) <= 2)
+                        nearby.Add(candidate);
+                }
+
+                ShuffleList(nearby, rng);
+                foreach (Vector2Int candidate in nearby)
+                {
+                    if (eventCells.Count >= clusterSize || used.Count >= obstructionLimit)
+                        break;
+
+                    AddDS2ScheduledCell(candidate, used, eventCells, obstructionLimit);
+                }
+
+                schedule.Add(eventCells);
+            }
+
+            return schedule;
+        }
+
+        private List<Vector2Int> BuildDS2EuclideanCorridorCandidates(
+            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos)
+        {
+            var seen = new HashSet<Vector2Int>();
+            var candidates = new List<Vector2Int>();
+            int samples = Mathf.Max(Math.Abs(targetPos.x - startPos.x), Math.Abs(targetPos.y - startPos.y));
+            int radius = 2;
+
+            for (int i = 1; i < samples; i++)
+            {
+                float t = i / (float)samples;
+                int centerX = Mathf.RoundToInt(Mathf.Lerp(startPos.x, targetPos.x, t));
+                int centerY = Mathf.RoundToInt(Mathf.Lerp(startPos.y, targetPos.y, t));
+
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    for (int dy = -radius; dy <= radius; dy++)
+                    {
+                        if (Math.Abs(dx) + Math.Abs(dy) > radius + 1)
+                            continue;
+
+                        Vector2Int pos = new Vector2Int(centerX + dx, centerY + dy);
+                        if (!baseGrid.IsValidCoordinate(pos.x, pos.y) || !baseGrid.IsWalkable(pos))
+                            continue;
+
+                        if (IsProtectedPoint(pos, startPos, targetPos))
+                            continue;
+
+                        if (seen.Add(pos))
+                            candidates.Add(pos);
+                    }
+                }
+            }
+
+            return candidates;
+        }
+
+        private bool TryPickDS2Candidate(
+            List<Vector2Int> candidates,
+            HashSet<Vector2Int> used,
+            Vector2Int startPos,
+            Vector2Int targetPos,
+            float targetProgress,
+            out Vector2Int selected)
+        {
+            selected = default;
+            bool found = false;
+            float bestScore = float.MaxValue;
+
+            foreach (Vector2Int candidate in candidates)
+            {
+                if (used.Contains(candidate))
+                    continue;
+
+                float progress = GetProjectionProgress(candidate, startPos, targetPos);
+                float score = Math.Abs(progress - targetProgress);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    selected = candidate;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
+        private float GetProjectionProgress(Vector2Int pos, Vector2Int startPos, Vector2Int targetPos)
+        {
+            Vector2 start = new Vector2(startPos.x, startPos.y);
+            Vector2 target = new Vector2(targetPos.x, targetPos.y);
+            Vector2 point = new Vector2(pos.x, pos.y);
+            Vector2 line = target - start;
+            float denominator = Vector2.Dot(line, line);
+            if (denominator <= 0.0001f)
+                return 0f;
+
+            return Mathf.Clamp01(Vector2.Dot(point - start, line) / denominator);
+        }
+
+        private void AddDS2ScheduledCell(
+            Vector2Int pos,
+            HashSet<Vector2Int> used,
+            List<Vector2Int> eventCells,
+            int obstructionLimit)
+        {
+            if (used.Count >= obstructionLimit || !used.Add(pos))
+                return;
+
+            eventCells.Add(pos);
+        }
+
+        private List<Vector2Int> ApplyDS2ScheduledObstructions(
+            GridMap grid,
+            int agentStep,
+            Vector2Int currentPos,
+            DS2DynamicState state)
+        {
+            var changes = new List<Vector2Int>();
+            int spacing = Mathf.Max(1, pathObstructionSpacing);
+
+            while (state.NextEventIndex < state.Schedule.Count &&
+                   agentStep >= (state.NextEventIndex + 1) * spacing)
+            {
+                foreach (Vector2Int pos in state.Schedule[state.NextEventIndex])
+                {
+                    if (pos == currentPos || !grid.IsWalkable(pos) || state.BlockedCells.Contains(pos))
+                        continue;
+
+                    grid.SetWalkable(pos, false);
+                    state.BlockedCells.Add(pos);
+                    changes.Add(pos);
+                }
+
+                state.NextEventIndex++;
+            }
+
+            return changes;
         }
 
         private List<Vector2Int> ApplyDS2DynamicObstructions(
@@ -1185,7 +1356,7 @@ namespace Pathfinding.Visualization
             _isVisualizing = true;
 
             GridMap visualGrid = _originalGridMap.Clone();
-            DS2DynamicState ds2State = CreateDS2DynamicState(testId);
+            DS2DynamicState ds2State = CreateDS2DynamicState(visualGrid, startPos, targetPos, testId);
             _gridMap = visualGrid;
             RefreshBasemapColors();
 
@@ -1198,6 +1369,7 @@ namespace Pathfinding.Visualization
             Vector2Int currentPos = startPos;
             Pathfinding.Core.PathfindingResult currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
             int replanCount = 0;
+            int ds2Step = 0;
             int safetyLimit = visualGrid.Width * visualGrid.Height * 2;
 
             while (currentPos != targetPos && safetyLimit-- > 0)
@@ -1214,8 +1386,7 @@ namespace Pathfinding.Visualization
                 for (int i = 0; i < currentResult.Path.Count; i++)
                 {
                     Vector2Int nextPos = currentResult.Path[i];
-                    List<Vector2Int> changes = ApplyDS2DynamicObstructions(visualGrid, currentResult.Path, i,
-                        startPos, currentPos, targetPos, ds2State);
+                    List<Vector2Int> changes = ApplyDS2ScheduledObstructions(visualGrid, ds2Step, currentPos, ds2State);
 
                     _gridMap = visualGrid;
                     RefreshBasemapColors();
@@ -1243,6 +1414,7 @@ namespace Pathfinding.Visualization
 
                     yield return StartCoroutine(MoveAgentTo(nextPos));
                     currentPos = nextPos;
+                    ds2Step++;
 
                     if (_basemapRenderers != null && currentPos != targetPos)
                         _basemapRenderers[currentPos.x, currentPos.y].color = colorPath;
@@ -1591,7 +1763,7 @@ namespace Pathfinding.Visualization
             int testId)
         {
             GridMap simulationGrid = _originalGridMap.Clone();
-            DS2DynamicState ds2State = CreateDS2DynamicState(testId);
+            DS2DynamicState ds2State = CreateDS2DynamicState(simulationGrid, startPos, targetPos, testId);
 
             var combinedResult = new Pathfinding.Core.PathfindingResult
             {
@@ -1600,6 +1772,7 @@ namespace Pathfinding.Visualization
             };
 
             Vector2Int currentPos = startPos;
+            int ds2Step = 0;
             int safetyLimit = simulationGrid.Width * simulationGrid.Height * 2;
 
             while (currentPos != targetPos && safetyLimit-- > 0)
@@ -1616,8 +1789,7 @@ namespace Pathfinding.Visualization
                 for (int pathIndex = 0; pathIndex < currentPlan.Path.Count && currentPos != targetPos; pathIndex++)
                 {
                     Vector2Int nextPos = currentPlan.Path[pathIndex];
-                    ApplyDS2DynamicObstructions(simulationGrid, currentPlan.Path, pathIndex,
-                        startPos, currentPos, targetPos, ds2State);
+                    ApplyDS2ScheduledObstructions(simulationGrid, ds2Step, currentPos, ds2State);
 
                     if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
                     {
@@ -1628,6 +1800,7 @@ namespace Pathfinding.Visualization
 
                     Vector2Int previousPos = currentPos;
                     currentPos = nextPos;
+                    ds2Step++;
                     combinedResult.Path.Add(currentPos);
                     combinedResult.PathLength += GetStepLength(currentPos, previousPos);
 
