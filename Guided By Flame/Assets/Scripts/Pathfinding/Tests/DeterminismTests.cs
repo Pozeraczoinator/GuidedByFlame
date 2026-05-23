@@ -22,7 +22,7 @@ namespace Pathfinding.Tests
     ///   1. Wielokrotne uruchomienie tego samego algorytmu → identyczny wynik
     ///   2. Konsystencja między algorytmami (A* i Dijkstra → ta sama długość ścieżki)
     ///   3. Determinizm na różnych topologiach map
-    ///   4. Determinizm z wagami terenu (DS3)
+    ///   4. Determinizm z wagami terenu
     ///   5. Determinizm ścieżki (dokładna sekwencja kroków)
     ///   6. Edge cases (start==cel, brak ścieżki, sąsiednie pola)
     /// </summary>
@@ -338,7 +338,7 @@ namespace Pathfinding.Tests
         }
 
         // ─────────────────────────────────────────────────────────
-        //  ZESTAW 4: DETERMINIZM Z WAGAMI TERENU (DS3)
+        //  ZESTAW 4: DETERMINIZM Z WAGAMI TERENU
         // ─────────────────────────────────────────────────────────
 
         /// <summary>
@@ -348,7 +348,7 @@ namespace Pathfinding.Tests
         private void RunWeightedTerrainDeterminismTests()
         {
             Debug.Log("── Zestaw 4: Determinizm z wagami terenu ──");
-            _report.AppendLine("\n── ZESTAW 4: WAGI TERENU (DS3) ──");
+            _report.AppendLine("\n── ZESTAW 4: WAGI TERENU ──");
 
             GridMap map = CreateTestMap();
             Vector2Int start = new Vector2Int(1, 1);
@@ -368,7 +368,7 @@ namespace Pathfinding.Tests
                 }
             }
 
-            // Algorytmy wspierające DS3 (bez JPS i GBFS).
+            // Algorytmy wspierające wagi terenu (bez JPS i GBFS).
             // GBFS jest testowany w innych zestawach, ale ignoruje wagi terenu z definicji implementacji.
             var algorithms = new IPathfindingAlgorithm[]
             {

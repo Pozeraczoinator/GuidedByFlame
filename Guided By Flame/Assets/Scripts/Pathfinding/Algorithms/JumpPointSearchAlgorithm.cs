@@ -84,7 +84,7 @@ namespace Pathfinding.Algorithms
                     return result;
                 }
 
-                IdentifySuccessors(currentNode, startPos, targetPos, grid, allNodes, openSet, closedSet);
+                IdentifySuccessors(currentNode, startPos, targetPos, grid, allNodes, openSet, closedSet, result);
             }
 
             sw.Stop();
@@ -94,7 +94,8 @@ namespace Pathfinding.Algorithms
         }
 
         private void IdentifySuccessors(Node currentNode, Vector2Int startPos, Vector2Int targetPos, GridMap grid,
-            Dictionary<Vector2Int, Node> allNodes, MinHeap<Node> openSet, HashSet<Vector2Int> closedSet)
+            Dictionary<Vector2Int, Node> allNodes, MinHeap<Node> openSet, HashSet<Vector2Int> closedSet,
+            Pathfinding.Core.PathfindingResult result)
         {
             List<Vector2Int> neighbors = FindNeighbors(currentNode, grid);
 
@@ -105,7 +106,7 @@ namespace Pathfinding.Algorithms
                     Math.Sign(neighborPos.y - currentNode.Pos.y)
                 );
 
-                Vector2Int? jumpPoint = Jump(currentNode.Pos, dir, targetPos, grid);
+                Vector2Int? jumpPoint = Jump(currentNode.Pos, dir, targetPos, grid, result);
 
                 if (jumpPoint.HasValue)
                 {
@@ -137,9 +138,11 @@ namespace Pathfinding.Algorithms
             }
         }
 
-        private Vector2Int? Jump(Vector2Int currentPos, Vector2Int dir, Vector2Int targetPos, GridMap grid)
+        private Vector2Int? Jump(Vector2Int currentPos, Vector2Int dir, Vector2Int targetPos, GridMap grid,
+            Pathfinding.Core.PathfindingResult result)
         {
             Vector2Int nextPos = currentPos + dir;
+            result.JumpScannedCells++;
 
             if (!CanMove(grid, currentPos, dir))
                 return null;
@@ -169,8 +172,8 @@ namespace Pathfinding.Algorithms
                     return nextPos;
                 }
 
-                if (Jump(nextPos, new Vector2Int(dx, 0), targetPos, grid).HasValue ||
-                    Jump(nextPos, new Vector2Int(0, dy), targetPos, grid).HasValue)
+                if (Jump(nextPos, new Vector2Int(dx, 0), targetPos, grid, result).HasValue ||
+                    Jump(nextPos, new Vector2Int(0, dy), targetPos, grid, result).HasValue)
                 {
                     return nextPos;
                 }
@@ -195,7 +198,7 @@ namespace Pathfinding.Algorithms
                 }
             }
 
-            return Jump(nextPos, dir, targetPos, grid);
+            return Jump(nextPos, dir, targetPos, grid, result);
         }
 
         private List<Vector2Int> FindNeighbors(Node node, GridMap grid)

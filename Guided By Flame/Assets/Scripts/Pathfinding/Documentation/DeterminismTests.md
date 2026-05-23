@@ -27,7 +27,7 @@ Aby potwierdzić to naukowo, zbudowano 6-fazowy moduł testujący:
 - **Jak weryfikujemy?** Generujemy proceduralnie 3 rodzaje map o parametrach typowych dla testów badawczych (Labirynt, Złożone Pokoje-Korytarze, Rozrzucone Bloki). Moduł wybiera start i cel, a następnie wykonuje cichy skan `BFS`, by sprawdzić, czy trasa istnieje.
 - **Czego oczekujemy?** Algorytmy muszą działać deterministycznie na każdej z topologii, niezależnie od stopnia uwięzienia i zagęszczenia ścian.
 
-### 4. Zestaw 4: Wagi Terenu (Terrain Costs / DS3)
+### 4. Zestaw 4: Wagi Terenu (Terrain Costs)
 - **Co testujemy?** Nie wszystkie pola na mapie są "równe" (np. ruch przez bagno kosztuje x5, przez las x2). Testujemy czy algorytmy potrafią zachować determinizm, gdy nawigują po zróżnicowanych "kosztach wejścia" pól.
 - **Jak weryfikujemy?** Rozrzucamy na planszy pola kosztujące x2, x5 lub x10 ze sztywnym Seedem generatora losowego. Weryfikujemy `A*`, `Dijkstrę` i `Greedy` (JPS nie obsługuje wag).
 - **Czego oczekujemy?** Po 50 wywołaniach każdy z algorytmów nadal wyznacza identyczną ścieżkę – matematyka floating-point połączona z priorytetami z sąsiedztwa i heuristic priority nie psuje zasady determinizmu.

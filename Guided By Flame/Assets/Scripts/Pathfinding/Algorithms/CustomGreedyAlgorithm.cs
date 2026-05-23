@@ -120,7 +120,7 @@ namespace Pathfinding.Algorithms
                     if (!grid.IsWalkable(neighborPos) || closedSet.Contains(neighborPos))
                         continue;
 
-                    // DS3: Uwzględniamy wagę terenu (GetMovementCost).
+                    // W scenariuszach ważonych uwzględniamy koszt wejścia na pole.
                     float terrainCost = grid.GetMovementCost(neighbor.X, neighbor.Y);
                     int moveCostToNeighbor = currentNode.GCost + (int)(GetOctagonalDistance(currentNode, neighbor) * terrainCost);
                     if (currentNode.Parent != null)
