@@ -72,6 +72,9 @@ namespace Pathfinding.Tests
             // ─── Zestaw 7: Determinizm pełnej ścieżki ───
             RunFullPathDeterminismTests();
 
+            // ─── Zestaw 8: Determinizm DS3 Escaping Target ───
+            RunDS3EscapingTargetDeterminismTests();
+
             // ─── Podsumowanie ───
             Debug.Log("══════════════════════════════════════════════════════════");
             Debug.Log($"  WYNIKI: {_passed} PASSED / {_failed} FAILED / {_passed + _failed} TOTAL");
@@ -602,6 +605,244 @@ namespace Pathfinding.Tests
                         $"Steps={reference.Path.Count}, Runs={repetitions}");
                 }
             }
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  ZESTAW 8: DETERMINIZM DS3 ESCAPING TARGET
+        // ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Weryfikuje, że sekwencja ucieczek celu w DS3 jest identyczna
+        /// niezależnie od algorytmu (ten sam seed → te same pozycje celu).
+        /// Każdy algorytm uruchamiany na tej samej mapie z tym samym seedem
+        /// musi dać tę samą sekwencję pozycji celu.
+        /// </summary>
+        private void RunDS3EscapingTargetDeterminismTests()
+        {
+            Debug.Log("── Zestaw 8: Determinizm DS3 Escaping Target ──");
+            _report.AppendLine("\n── ZESTAW 8: DS3 ESCAPING TARGET ──");
+
+            GridMap map = CreateTestMap();
+            Vector2Int start = new Vector2Int(1, 1);
+            Vector2Int target = new Vector2Int(28, 17);
+
+            // Upewnij się, że start i cel są walkable
+            if (!map.IsWalkable(start) || !map.IsWalkable(target))
+            {
+                RecordResult("DS3_EscapingTarget_Setup", false,
+                    "Start lub cel nie jest walkable na mapie testowej.", "");
+                return;
+            }
+
+            int testSeed = 42;
+            int maxEscapes = 50;
+            var algorithms = GetAllAlgorithms();
+
+            // Zbierz sekwencje pozycji celu per algorytm
+            var allTargetSequences = new List<List<Vector2Int>>();
+            var allAlgorithmNames = new List<string>();
+
+            foreach (var algo in algorithms)
+            {
+                var targetSequence = SimulateDS3EscapingTarget(
+                    algo, map, start, target, testSeed, maxEscapes);
+                allTargetSequences.Add(targetSequence);
+                allAlgorithmNames.Add(algo.AlgorithmName);
+            }
+
+            // Sprawdź: sekwencja pozycji celu musi być identyczna dla WSZYSTKICH algorytmów
+            if (allTargetSequences.Count < 2)
+            {
+                RecordResult("DS3_EscapingTarget_AllAlgos", true, "",
+                    "Mniej niż 2 algorytmy do porównania.");
+                return;
+            }
+
+            List<Vector2Int> referenceSequence = allTargetSequences[0];
+            string referenceAlgo = allAlgorithmNames[0];
+            bool allMatch = true;
+            string failReason = "";
+
+            for (int algoIndex = 1; algoIndex < allTargetSequences.Count; algoIndex++)
+            {
+                List<Vector2Int> otherSequence = allTargetSequences[algoIndex];
+                string otherAlgo = allAlgorithmNames[algoIndex];
+
+                if (referenceSequence.Count != otherSequence.Count)
+                {
+                    allMatch = false;
+                    failReason = $"{referenceAlgo} ma {referenceSequence.Count} ucieczek, {otherAlgo} ma {otherSequence.Count}";
+                    break;
+                }
+
+                for (int step = 0; step < referenceSequence.Count; step++)
+                {
+                    if (referenceSequence[step] != otherSequence[step])
+                    {
+                        allMatch = false;
+                        failReason = $"Krok {step}: {referenceAlgo}={referenceSequence[step]}, {otherAlgo}={otherSequence[step]}";
+                        break;
+                    }
+                }
+
+                if (!allMatch) break;
+            }
+
+            RecordResult("DS3_EscapingTarget_AllAlgosSameSequence", allMatch, failReason,
+                $"Algorytmów={algorithms.Count}, Ucieczek={referenceSequence.Count}, Seed={testSeed}");
+
+            // Sprawdź powtarzalność: ten sam algorytm uruchomiony wiele razy daje tę samą sekwencję
+            foreach (var algo in algorithms)
+            {
+                var seq1 = SimulateDS3EscapingTarget(algo, map, start, target, testSeed, maxEscapes);
+                var freshAlgo = CreateFreshAlgorithm(algo.AlgorithmName);
+                var seq2 = SimulateDS3EscapingTarget(freshAlgo, map, start, target, testSeed, maxEscapes);
+
+                bool seqMatch = seq1.Count == seq2.Count;
+                string seqFailReason = "";
+
+                if (seqMatch)
+                {
+                    for (int s = 0; s < seq1.Count; s++)
+                    {
+                        if (seq1[s] != seq2[s])
+                        {
+                            seqMatch = false;
+                            seqFailReason = $"Krok {s}: run1={seq1[s]}, run2={seq2[s]}";
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    seqFailReason = $"Różna długość: run1={seq1.Count}, run2={seq2.Count}";
+                }
+
+                RecordResult($"DS3_EscapingTarget_Repeat_{algo.AlgorithmName}", seqMatch, seqFailReason,
+                    $"Ucieczek={seq1.Count}");
+            }
+        }
+
+        /// <summary>
+        /// Symuluje scenariusz DS3 (uciekający cel) i zwraca sekwencję pozycji celu
+        /// po każdej ucieczce.
+        /// </summary>
+        private List<Vector2Int> SimulateDS3EscapingTarget(
+            IPathfindingAlgorithm algorithm,
+            GridMap baseMap,
+            Vector2Int start,
+            Vector2Int target,
+            int testSeed,
+            int maxEscapes)
+        {
+            GridMap grid = baseMap.Clone();
+            int seed = testSeed + 8000;
+            var rng = new System.Random(seed);
+
+            Vector2Int currentTarget = target;
+            Vector2Int currentPos = start;
+            int stepsSinceLastEscape = 0;
+            int totalEscapes = 0;
+            var targetPositions = new List<Vector2Int> { currentTarget };
+
+            int safetyLimit = grid.Width * grid.Height * 4;
+
+            while (currentPos != currentTarget && safetyLimit-- > 0)
+            {
+                var result = algorithm.FindPath(grid, currentPos, currentTarget);
+                if (!result.PathFound || result.Path == null || result.Path.Count == 0)
+                    break;
+
+                bool needsReplan = false;
+                for (int i = 0; i < result.Path.Count && currentPos != currentTarget; i++)
+                {
+                    Vector2Int nextPos = result.Path[i];
+
+                    // Sprawdź czy ruch jest legalny
+                    int dx = nextPos.x - currentPos.x;
+                    int dy = nextPos.y - currentPos.y;
+                    if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1 || (dx == 0 && dy == 0))
+                        break;
+                    if (!grid.IsWalkable(nextPos))
+                        break;
+                    if (dx != 0 && dy != 0)
+                    {
+                        if (!grid.IsWalkable(currentPos.x + dx, currentPos.y) ||
+                            !grid.IsWalkable(currentPos.x, currentPos.y + dy))
+                            break;
+                    }
+
+                    currentPos = nextPos;
+
+                    if (currentPos == currentTarget)
+                        break;
+
+                    // Co 2 kroki — próba ucieczki celu
+                    stepsSinceLastEscape++;
+                    if (stepsSinceLastEscape >= 2 && totalEscapes < maxEscapes)
+                    {
+                        stepsSinceLastEscape = 0;
+
+                        var validDirs = new List<Vector2Int>();
+                        Vector2Int[] escapeDirs = {
+                            new Vector2Int(1, 0), new Vector2Int(-1, 0),
+                            new Vector2Int(0, 1), new Vector2Int(0, -1),
+                            new Vector2Int(1, 1), new Vector2Int(-1, 1),
+                            new Vector2Int(1, -1), new Vector2Int(-1, -1)
+                        };
+
+                        foreach (var dir in escapeDirs)
+                        {
+                            Vector2Int candidate = currentTarget + dir;
+                            if (!grid.IsValidCoordinate(candidate.x, candidate.y))
+                                continue;
+                            if (!grid.IsWalkable(candidate))
+                                continue;
+
+                            int oldDistX = Math.Abs(currentTarget.x - currentPos.x);
+                            int oldDistY = Math.Abs(currentTarget.y - currentPos.y);
+                            int newDistX = Math.Abs(candidate.x - currentPos.x);
+                            int newDistY = Math.Abs(candidate.y - currentPos.y);
+
+                            bool shorterX = newDistX < oldDistX;
+                            bool shorterY = newDistY < oldDistY;
+                            bool longerX = newDistX > oldDistX;
+                            bool longerY = newDistY > oldDistY;
+
+                            if (shorterX && !longerY)
+                                continue;
+                            if (shorterY && !longerX)
+                                continue;
+
+                            validDirs.Add(dir);
+                        }
+
+                        if (validDirs.Count > 0)
+                        {
+                            validDirs.Sort((a, b) =>
+                            {
+                                int cmp = a.x.CompareTo(b.x);
+                                return cmp != 0 ? cmp : a.y.CompareTo(b.y);
+                            });
+
+                            Vector2Int chosen = validDirs[rng.Next(validDirs.Count)];
+                            currentTarget += chosen;
+                            totalEscapes++;
+                            targetPositions.Add(currentTarget);
+                            needsReplan = true;
+                            break;
+                        }
+                    }
+
+                    if (--safetyLimit <= 0)
+                        break;
+                }
+
+                if (!needsReplan && currentPos != currentTarget)
+                    continue;
+            }
+
+            return targetPositions;
         }
 
         // ─────────────────────────────────────────────────────────

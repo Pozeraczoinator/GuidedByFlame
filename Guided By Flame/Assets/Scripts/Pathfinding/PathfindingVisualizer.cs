@@ -44,14 +44,14 @@ namespace Pathfinding.Visualization
         /// - Static: stała mapa, brak zmian
         /// - DS1_MovingObstacles: ruchome przeszkody, wspólny deterministyczny snapshot dla algorytmów
         /// - DS2_PathObstruction: dodawanie/usuwanie przeszkód na bazowej trasie NPC
-        /// - DS3_ExpandingHazard: deterministycznie rozszerzające się zagrożenie środowiskowe
+        /// - DS3_EscapingTarget: punkt końcowy ucieka co 2 kroki agenta o 1 pole
         /// </summary>
         public enum ScenarioType
         {
             Static = 0,
             DS1_MovingObstacles = 1,
             DS2_PathObstruction = 2,
-            DS3_ExpandingHazard = 3
+            DS3_EscapingTarget = 3
         }
 
         public enum MapTopology { FromFile, OpenField, Maze, RoomCorridor, ScatteredBlock }
@@ -74,7 +74,7 @@ namespace Pathfinding.Visualization
         public bool runFullBenchmarkSuite = false;
 
         [Header("═══ Scenariusz Testowy ═══")]
-        [Tooltip("Static / DS1_MovingObstacles / DS2_PathObstruction / DS3_ExpandingHazard")]
+        [Tooltip("Static / DS1_MovingObstacles / DS2_PathObstruction / DS3_EscapingTarget")]
         public ScenarioType scenario = ScenarioType.Static;
 
         [Tooltip("Seed RNG — ten sam seed = te same wyniki. Kluczowe dla powtarzalności.")]
@@ -170,22 +170,10 @@ namespace Pathfinding.Visualization
         [Range(2, 12)]
         public int pathObstructionSpacing = 4;
 
-        [Header("═══ DS3: Expanding Hazard Zone ═══")]
-        [Tooltip("Liczba deterministycznych źródeł zagrożenia ustawianych w pobliżu bazowej trasy.")]
-        [Range(1, 16)]
-        public int hazardSourceCount = 4;
-
-        [Tooltip("Co ile kroków agenta zagrożenie rozszerza się o kolejną falę.")]
-        [Range(1, 20)]
-        public int hazardExpansionInterval = 3;
-
-        [Tooltip("Maksymalna liczba pól, które mogą zostać zajęte przez zagrożenie w jednym teście.")]
-        [Range(8, 2048)]
-        public int hazardMaxCells = 192;
-
-        [Tooltip("Jak daleko od bazowej ścieżki może rozprzestrzeniać się DS3. Ogranicza test do sensownego korytarza wokół trasy.")]
-        [Range(1, 16)]
-        public int hazardInfluenceRadius = 6;
+        [Header("═══ DS3: Escaping Target ═══")]
+        [Tooltip("Maksymalna liczba ucieczek punktu końcowego w jednym teście DS3.")]
+        [Range(5, 200)]
+        public int maxTargetEscapes = 50;
 
         [Header("═══ Batch Generator ═══")]
         [Tooltip("Czy wygenerować wszystkie 64 kombinacje map przy starcie (zamiast benchmarku).")]
@@ -283,29 +271,22 @@ namespace Pathfinding.Visualization
             }
         }
 
-        private class DS3HazardEvent
+        private class DS3EscapingTargetState
         {
-            public int TriggerStep;
-            public List<Vector2Int> Cells;
-        }
+            public Vector2Int CurrentTarget;
+            public readonly Vector2Int OriginalTarget;
+            public readonly System.Random Rng;
+            public int StepsSinceLastEscape;
+            public int TotalEscapes;
 
-        private class DS3HazardState
-        {
-            public readonly List<DS3HazardEvent> Schedule;
-            public readonly HashSet<Vector2Int> HazardCells = new HashSet<Vector2Int>();
-            public readonly HashSet<Vector2Int> DeferredCells = new HashSet<Vector2Int>();
-            public int NextEventIndex;
-
-            public DS3HazardState(List<DS3HazardEvent> schedule)
+            public DS3EscapingTargetState(Vector2Int initialTarget, int seed)
             {
-                Schedule = schedule;
+                CurrentTarget = initialTarget;
+                OriginalTarget = initialTarget;
+                Rng = new System.Random(seed);
+                StepsSinceLastEscape = 0;
+                TotalEscapes = 0;
             }
-        }
-
-        private class DS3HazardSource
-        {
-            public Vector2Int Position;
-            public int ActivationStep;
         }
 
         private bool IsMovingObstacleCell(int x, int y)
@@ -596,7 +577,7 @@ namespace Pathfinding.Visualization
                                 StartCoroutine(VisualizeDS2ReplanningRoutine(
                                     algorithm, startPos, targetPos, testId));
                             }
-                            else if (scenario == ScenarioType.DS3_ExpandingHazard)
+                            else if (scenario == ScenarioType.DS3_EscapingTarget)
                             {
                                 StartCoroutine(VisualizeDS3ReplanningRoutine(
                                     algorithm, startPos, targetPos, testId));
@@ -645,7 +626,7 @@ namespace Pathfinding.Visualization
                     // Reset mapy po zakonczeniu test case z dynamicznym scenariuszem.
                     if (scenario == ScenarioType.DS1_MovingObstacles ||
                         scenario == ScenarioType.DS2_PathObstruction ||
-                        scenario == ScenarioType.DS3_ExpandingHazard)
+                        scenario == ScenarioType.DS3_EscapingTarget)
                     {
                         _gridMap = _originalGridMap.Clone();
                         if (ShouldVisualize) RefreshBasemapColors();
@@ -888,7 +869,7 @@ namespace Pathfinding.Visualization
                 return;
             }
 
-            if (scenario == ScenarioType.DS3_ExpandingHazard)
+            if (scenario == ScenarioType.DS3_EscapingTarget)
             {
                 return;
             }
@@ -1177,261 +1158,84 @@ namespace Pathfinding.Visualization
             changes.Add(pos);
         }
 
-        private DS3HazardState CreateDS3HazardState(GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos, int testId)
+        private DS3EscapingTargetState CreateDS3EscapingTargetState(Vector2Int targetPos, int testId)
         {
             int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId + 8000;
-            var rng = new System.Random(seed);
-            return new DS3HazardState(BuildDS3HazardSchedule(baseGrid, startPos, targetPos, rng));
+            return new DS3EscapingTargetState(targetPos, seed);
         }
 
-        private List<DS3HazardEvent> BuildDS3HazardSchedule(
-            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos, System.Random rng)
+        private static readonly Vector2Int[] DS3EscapeDirections =
         {
-            var schedule = new List<DS3HazardEvent>();
-            var reference = new AStarAlgorithm().FindPath(baseGrid, startPos, targetPos);
-            if (!reference.PathFound || reference.Path == null || reference.Path.Count < 4)
-                return schedule;
-
-            var referencePath = new List<Vector2Int> { startPos };
-            referencePath.AddRange(reference.Path);
-            var referencePathSet = new HashSet<Vector2Int>(referencePath);
-
-            List<DS3HazardSource> sources = SelectDS3HazardSources(
-                baseGrid, referencePath, referencePathSet, startPos, targetPos, rng);
-            if (sources.Count == 0)
-                return schedule;
-
-            int maxCells = Mathf.Max(sources.Count, hazardMaxCells);
-            int expansionInterval = Mathf.Max(1, hazardExpansionInterval);
-            var visited = new HashSet<Vector2Int>();
-            int scheduledCells = 0;
-
-            sources.Sort((a, b) =>
-            {
-                int compare = a.ActivationStep.CompareTo(b.ActivationStep);
-                return compare != 0 ? compare : CompareVector2Int(a.Position, b.Position);
-            });
-
-            foreach (DS3HazardSource source in sources)
-            {
-                if (scheduledCells >= maxCells || !visited.Add(source.Position))
-                    continue;
-
-                AddDS3HazardEvent(schedule, source.ActivationStep, source.Position);
-                scheduledCells++;
-
-                var frontier = new List<Vector2Int> { source.Position };
-                int wave = 1;
-
-                while (frontier.Count > 0 && scheduledCells < maxCells)
-                {
-                    var nextFrontier = new List<Vector2Int>();
-                    frontier.Sort(CompareVector2Int);
-
-                    foreach (Vector2Int cell in frontier)
-                    {
-                        foreach (Vector2Int dir in DS3HazardDirections)
-                        {
-                            Vector2Int next = cell + dir;
-                            if (!IsValidDS3HazardCell(baseGrid, next, referencePath, referencePathSet, startPos, targetPos))
-                                continue;
-
-                            if (!visited.Add(next))
-                                continue;
-
-                            nextFrontier.Add(next);
-                        }
-                    }
-
-                    if (nextFrontier.Count == 0)
-                        break;
-
-                    nextFrontier.Sort(CompareVector2Int);
-                    int remaining = maxCells - scheduledCells;
-                    if (nextFrontier.Count > remaining)
-                        nextFrontier = nextFrontier.GetRange(0, remaining);
-
-                    AddDS3HazardEvent(schedule, source.ActivationStep + wave * expansionInterval, nextFrontier);
-
-                    scheduledCells += nextFrontier.Count;
-                    frontier = nextFrontier;
-                    wave++;
-                }
-            }
-
-            schedule.Sort((a, b) =>
-            {
-                int compare = a.TriggerStep.CompareTo(b.TriggerStep);
-                if (compare != 0)
-                    return compare;
-
-                if (a.Cells.Count == 0 || b.Cells.Count == 0)
-                    return a.Cells.Count.CompareTo(b.Cells.Count);
-
-                return CompareVector2Int(a.Cells[0], b.Cells[0]);
-            });
-            return schedule;
-        }
-
-        private void AddDS3HazardEvent(List<DS3HazardEvent> schedule, int triggerStep, Vector2Int cell)
-        {
-            AddDS3HazardEvent(schedule, triggerStep, new List<Vector2Int> { cell });
-        }
-
-        private void AddDS3HazardEvent(List<DS3HazardEvent> schedule, int triggerStep, List<Vector2Int> cells)
-        {
-            if (cells == null || cells.Count == 0)
-                return;
-
-            schedule.Add(new DS3HazardEvent
-            {
-                TriggerStep = Mathf.Max(0, triggerStep),
-                Cells = cells
-            });
-        }
-
-        private static readonly Vector2Int[] DS3HazardDirections =
-        {
-            new Vector2Int(1, 0),
-            new Vector2Int(0, 1),
-            new Vector2Int(-1, 0),
-            new Vector2Int(0, -1)
+            new Vector2Int(1, 0),   // prawo
+            new Vector2Int(-1, 0),  // lewo
+            new Vector2Int(0, 1),   // góra
+            new Vector2Int(0, -1),  // dół
+            new Vector2Int(1, 1),   // góra-prawo
+            new Vector2Int(-1, 1),  // góra-lewo
+            new Vector2Int(1, -1),  // dół-prawo
+            new Vector2Int(-1, -1)  // dół-lewo
         };
 
-        private List<DS3HazardSource> SelectDS3HazardSources(
-            GridMap baseGrid,
-            List<Vector2Int> referencePath,
-            HashSet<Vector2Int> referencePathSet,
-            Vector2Int startPos,
-            Vector2Int targetPos,
-            System.Random rng)
+        /// <summary>
+        /// Co 2 kroki agenta, punkt końcowy ucieka o 1 pole w losowym kierunku.
+        /// Kierunek nie może skracać drogi w obu osiach jednocześnie.
+        /// Zwraca true jeśli cel się przesunął.
+        /// </summary>
+        private bool TryEscapeTarget(
+            GridMap grid,
+            Vector2Int agentPos,
+            DS3EscapingTargetState state)
         {
-            var sources = new List<DS3HazardSource>();
-            var used = new HashSet<Vector2Int>();
-            var candidateIndices = BuildDS3ReferenceIndices(referencePath, startPos, targetPos);
-            int sourceCount = Mathf.Min(Mathf.Max(1, hazardSourceCount), candidateIndices.Count);
+            if (state.TotalEscapes >= maxTargetEscapes)
+                return false;
 
-            for (int sourceIndex = 0; sourceIndex < sourceCount; sourceIndex++)
+            state.StepsSinceLastEscape++;
+            if (state.StepsSinceLastEscape < 2)
+                return false;
+
+            state.StepsSinceLastEscape = 0;
+
+            // Zbierz dostępne kierunki ucieczki
+            var validDirs = new List<Vector2Int>();
+            foreach (var dir in DS3EscapeDirections)
             {
-                int pathIndex = PickDS3SegmentIndex(candidateIndices, sourceIndex, sourceCount, rng);
-                Vector2Int anchor = referencePath[pathIndex];
-                List<Vector2Int> candidates = FindDS3SourceCandidates(
-                    baseGrid, anchor, referencePath, referencePathSet, startPos, targetPos, used);
-
-                if (candidates.Count == 0 &&
-                    IsValidDS3HazardCell(baseGrid, anchor, referencePath, referencePathSet, startPos, targetPos))
-                {
-                    candidates.Add(anchor);
-                }
-
-                if (candidates.Count == 0)
+                Vector2Int candidate = state.CurrentTarget + dir;
+                if (!grid.IsValidCoordinate(candidate.x, candidate.y))
+                    continue;
+                if (!grid.IsWalkable(candidate))
                     continue;
 
-                candidates.Sort(CompareVector2Int);
-                Vector2Int source = candidates[rng.Next(candidates.Count)];
-                sources.Add(new DS3HazardSource
-                {
-                    Position = source,
-                    ActivationStep = Mathf.Max(0, pathIndex - Mathf.Max(1, hazardExpansionInterval))
-                });
-                used.Add(source);
-            }
+                // Nowa pozycja NIE może skracać drogi w obu osiach naraz
+                int oldDx = Math.Abs(state.CurrentTarget.x - agentPos.x);
+                int oldDy = Math.Abs(state.CurrentTarget.y - agentPos.y);
+                int newDx = Math.Abs(candidate.x - agentPos.x);
+                int newDy = Math.Abs(candidate.y - agentPos.y);
 
-            return sources;
-        }
+                bool shorterX = newDx < oldDx;
+                bool shorterY = newDy < oldDy;
+                bool longerX = newDx > oldDx;
+                bool longerY = newDy > oldDy;
 
-        private List<int> BuildDS3ReferenceIndices(List<Vector2Int> referencePath, Vector2Int startPos, Vector2Int targetPos)
-        {
-            var candidates = new List<int>();
-
-            for (int i = 1; i < referencePath.Count - 1; i++)
-            {
-                Vector2Int pos = referencePath[i];
-                if (IsDS3ProtectedPoint(pos, startPos, targetPos))
+                // Jeśli ucieczka skraca dystans w jednej osi, to MUSI wydłużać w drugiej.
+                // Inaczej cel po prostu zbliżałby się do agenta.
+                if (shorterX && !longerY)
+                    continue;
+                if (shorterY && !longerX)
                     continue;
 
-                candidates.Add(i);
+                validDirs.Add(dir);
             }
 
-            return candidates;
-        }
-
-        private int PickDS3SegmentIndex(List<int> candidateIndices, int itemIndex, int itemCount, System.Random rng)
-        {
-            int segmentStart = itemIndex * candidateIndices.Count / itemCount;
-            int segmentEnd = ((itemIndex + 1) * candidateIndices.Count / itemCount) - 1;
-            if (segmentEnd < segmentStart)
-                segmentEnd = segmentStart;
-
-            int offset = rng.Next(segmentEnd - segmentStart + 1);
-            return candidateIndices[segmentStart + offset];
-        }
-
-        private List<Vector2Int> FindDS3SourceCandidates(
-            GridMap baseGrid,
-            Vector2Int anchor,
-            List<Vector2Int> referencePath,
-            HashSet<Vector2Int> referencePathSet,
-            Vector2Int startPos,
-            Vector2Int targetPos,
-            HashSet<Vector2Int> used)
-        {
-            var candidates = new List<Vector2Int>();
-            int radius = Mathf.Max(2, hazardInfluenceRadius);
-
-            for (int dx = -radius; dx <= radius; dx++)
-            {
-                for (int dy = -radius; dy <= radius; dy++)
-                {
-                    Vector2Int cell = new Vector2Int(anchor.x + dx, anchor.y + dy);
-                    if (!IsValidDS3HazardCell(baseGrid, cell, referencePath, referencePathSet, startPos, targetPos))
-                        continue;
-
-                    if (used.Contains(cell) || referencePathSet.Contains(cell))
-                        continue;
-
-                    int distanceFromAnchor = Math.Abs(dx) + Math.Abs(dy);
-                    if (distanceFromAnchor < 2)
-                        continue;
-
-                    candidates.Add(cell);
-                }
-            }
-
-            return candidates;
-        }
-
-        private bool IsValidDS3HazardCell(
-            GridMap baseGrid,
-            Vector2Int cell,
-            List<Vector2Int> referencePath,
-            HashSet<Vector2Int> referencePathSet,
-            Vector2Int startPos,
-            Vector2Int targetPos)
-        {
-            if (!baseGrid.IsValidCoordinate(cell.x, cell.y) || !baseGrid.IsWalkable(cell))
+            if (validDirs.Count == 0)
                 return false;
 
-            if (IsDS3ProtectedPoint(cell, startPos, targetPos))
-                return false;
+            // Sortuj deterministycznie przed losowaniem
+            validDirs.Sort(CompareVector2Int);
 
-            if (GetMinChebyshevDistanceToPath(cell, referencePath) > Mathf.Max(1, hazardInfluenceRadius))
-                return false;
-
+            Vector2Int chosen = validDirs[state.Rng.Next(validDirs.Count)];
+            state.CurrentTarget += chosen;
+            state.TotalEscapes++;
             return true;
-        }
-
-        private int GetMinChebyshevDistanceToPath(Vector2Int cell, List<Vector2Int> referencePath)
-        {
-            int best = int.MaxValue;
-            foreach (Vector2Int pathCell in referencePath)
-            {
-                int distance = Math.Max(Math.Abs(cell.x - pathCell.x), Math.Abs(cell.y - pathCell.y));
-                if (distance < best)
-                    best = distance;
-            }
-
-            return best;
         }
 
         private int CompareVector2Int(Vector2Int a, Vector2Int b)
@@ -1441,78 +1245,6 @@ namespace Pathfinding.Visualization
                 return compare;
 
             return a.y.CompareTo(b.y);
-        }
-
-        private List<Vector2Int> ApplyDS3HazardEvents(
-            GridMap grid,
-            int agentStep,
-            Vector2Int currentPos,
-            DS3HazardState state)
-        {
-            var changes = new List<Vector2Int>();
-            ApplyDS3DeferredHazards(grid, currentPos, state, changes);
-
-            while (state.NextEventIndex < state.Schedule.Count &&
-                   agentStep >= state.Schedule[state.NextEventIndex].TriggerStep)
-            {
-                foreach (Vector2Int cell in state.Schedule[state.NextEventIndex].Cells)
-                    TryApplyDS3HazardCell(grid, cell, currentPos, state, changes);
-
-                state.NextEventIndex++;
-            }
-
-            return changes;
-        }
-
-        private void ApplyDS3DeferredHazards(
-            GridMap grid,
-            Vector2Int currentPos,
-            DS3HazardState state,
-            List<Vector2Int> changes)
-        {
-            if (state.DeferredCells.Count == 0)
-                return;
-
-            var deferred = new List<Vector2Int>(state.DeferredCells);
-            foreach (Vector2Int cell in deferred)
-            {
-                if (cell == currentPos)
-                    continue;
-
-                state.DeferredCells.Remove(cell);
-                TryApplyDS3HazardCell(grid, cell, currentPos, state, changes);
-            }
-        }
-
-        private void TryApplyDS3HazardCell(
-            GridMap grid,
-            Vector2Int cell,
-            Vector2Int currentPos,
-            DS3HazardState state,
-            List<Vector2Int> changes)
-        {
-            if (state.HazardCells.Contains(cell))
-                return;
-
-            if (cell == currentPos)
-            {
-                state.DeferredCells.Add(cell);
-                return;
-            }
-
-            if (!grid.IsWalkable(cell))
-                return;
-
-            grid.SetWalkable(cell, false);
-            state.HazardCells.Add(cell);
-            changes.Add(cell);
-        }
-
-        private bool IsDS3ProtectedPoint(Vector2Int pos, Vector2Int startPos, Vector2Int targetPos)
-        {
-            const int protectedRadius = 2;
-            return Math.Abs(pos.x - startPos.x) <= protectedRadius && Math.Abs(pos.y - startPos.y) <= protectedRadius ||
-                   Math.Abs(pos.x - targetPos.x) <= protectedRadius && Math.Abs(pos.y - targetPos.y) <= protectedRadius;
         }
 
         private bool IsProtectedPoint(Vector2Int pos, Vector2Int startPos, Vector2Int targetPos)
@@ -1768,8 +1500,7 @@ namespace Pathfinding.Visualization
             _isVisualizing = true;
 
             GridMap visualGrid = _originalGridMap.Clone();
-            DS3HazardState hazardState = CreateDS3HazardState(visualGrid, startPos, targetPos, testId);
-            ApplyDS3HazardEvents(visualGrid, 0, startPos, hazardState);
+            DS3EscapingTargetState escapeState = CreateDS3EscapingTargetState(targetPos, testId);
             _gridMap = visualGrid;
             RefreshBasemapColors();
 
@@ -1780,14 +1511,15 @@ namespace Pathfinding.Visualization
             }
 
             Vector2Int currentPos = startPos;
-            Pathfinding.Core.PathfindingResult currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
+            Vector2Int currentTarget = escapeState.CurrentTarget;
+            Pathfinding.Core.PathfindingResult currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, currentTarget);
             int replanCount = 0;
-            int agentStep = 0;
-            int safetyLimit = visualGrid.Width * visualGrid.Height * 2;
+            int safetyLimit = visualGrid.Width * visualGrid.Height * 4;
 
-            while (currentPos != targetPos && safetyLimit-- > 0)
+            while (currentPos != escapeState.CurrentTarget && safetyLimit-- > 0)
             {
-                yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, true));
+                currentTarget = escapeState.CurrentTarget;
+                yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, currentTarget, true));
 
                 if (currentResult == null || !currentResult.PathFound || currentResult.Path == null || currentResult.Path.Count == 0)
                 {
@@ -1799,27 +1531,11 @@ namespace Pathfinding.Visualization
                 for (int i = 0; i < currentResult.Path.Count; i++)
                 {
                     Vector2Int nextPos = currentResult.Path[i];
-                    List<Vector2Int> changes = ApplyDS3HazardEvents(visualGrid, agentStep, currentPos, hazardState);
-
-                    _gridMap = visualGrid;
-                    RefreshBasemapColors();
-                    ShowChangeMarkers(changes);
-                    yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, false));
-                    ShowChangeMarkers(changes);
 
                     if (!CanMoveOnCurrentGrid(visualGrid, currentPos, nextPos))
                     {
                         replanCount++;
-                        if (_basemapRenderers != null)
-                        {
-                            _basemapRenderers[currentPos.x, currentPos.y].color = colorCurrentAgentCell;
-                            _basemapRenderers[nextPos.x, nextPos.y].color = colorReplanPause;
-                            _basemapRenderers[startPos.x, startPos.y].color = colorStart;
-                            _basemapRenderers[targetPos.x, targetPos.y].color = colorTarget;
-                        }
-
-                        Debug.Log($"[Visualizer][DS3] {algorithm.AlgorithmName}: rekalkulacja #{replanCount}, zagrożenie zablokowało krok {nextPos}.");
-                        currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
+                        currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, escapeState.CurrentTarget);
                         replanned = true;
                         yield return new WaitForSeconds(replanPauseDuration);
                         break;
@@ -1827,20 +1543,44 @@ namespace Pathfinding.Visualization
 
                     yield return StartCoroutine(MoveAgentTo(nextPos));
                     currentPos = nextPos;
-                    agentStep++;
 
-                    if (_basemapRenderers != null && currentPos != targetPos)
+                    if (_basemapRenderers != null && currentPos != escapeState.CurrentTarget)
                         _basemapRenderers[currentPos.x, currentPos.y].color = colorPath;
 
-                    if (currentPos == targetPos || --safetyLimit <= 0)
+                    if (currentPos == escapeState.CurrentTarget)
+                        break;
+
+                    // Co 2 kroki agenta — cel ucieka
+                    bool escaped = TryEscapeTarget(visualGrid, currentPos, escapeState);
+                    if (escaped)
+                    {
+                        replanCount++;
+                        Debug.Log($"[Visualizer][DS3] {algorithm.AlgorithmName}: cel uciekł na {escapeState.CurrentTarget} (ucieczka #{escapeState.TotalEscapes}).");
+
+                        // Odśwież kolory celu na basemap
+                        _gridMap = visualGrid;
+                        RefreshBasemapColors();
+                        if (_basemapRenderers != null)
+                        {
+                            _basemapRenderers[startPos.x, startPos.y].color = colorStart;
+                            _basemapRenderers[escapeState.CurrentTarget.x, escapeState.CurrentTarget.y].color = colorTarget;
+                        }
+
+                        currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, escapeState.CurrentTarget);
+                        replanned = true;
+                        yield return new WaitForSeconds(replanPauseDuration);
+                        break;
+                    }
+
+                    if (--safetyLimit <= 0)
                         break;
                 }
 
-                if (!replanned && currentPos != targetPos)
-                    currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
+                if (!replanned && currentPos != escapeState.CurrentTarget)
+                    currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, escapeState.CurrentTarget);
             }
 
-            Debug.Log($"[Visualizer][DS3] {algorithm.AlgorithmName}: wizualizacja zakończona, rekalkulacje={replanCount}, fale={hazardState.NextEventIndex}/{hazardState.Schedule.Count}, pola={hazardState.HazardCells.Count}.");
+            Debug.Log($"[Visualizer][DS3] {algorithm.AlgorithmName}: wizualizacja zakończona, rekalkulacje={replanCount}, ucieczki={escapeState.TotalEscapes}.");
             _isVisualizing = false;
         }
 
@@ -1928,7 +1668,7 @@ namespace Pathfinding.Visualization
                 return;
             }
 
-            if (scenario == ScenarioType.DS3_ExpandingHazard)
+            if (scenario == ScenarioType.DS3_EscapingTarget)
             {
                 MeasureDS3DynamicAlgorithm(algorithm, startPos, targetPos, testId, density,
                     out metrics, out visualResult);
@@ -1974,7 +1714,7 @@ namespace Pathfinding.Visualization
                 ScenarioType.Static => "Static",
                 ScenarioType.DS1_MovingObstacles => "DS1_MovingObstacles",
                 ScenarioType.DS2_PathObstruction => "DS2_PathObstruction",
-                ScenarioType.DS3_ExpandingHazard => "DS3_ExpandingHazard",
+                ScenarioType.DS3_EscapingTarget => "DS3_EscapingTarget",
                 _ => "Static"
             };
 
@@ -2287,7 +2027,7 @@ namespace Pathfinding.Visualization
                 StartY = startPos.y,
                 TargetX = targetPos.x,
                 TargetY = targetPos.y,
-                Scenario = "DS3_ExpandingHazard",
+                Scenario = "DS3_EscapingTarget",
                 ObstacleDensity = density,
                 MapTopology = _activeMapTopology,
                 MapSeed = _activeMapSeed,
@@ -2304,8 +2044,7 @@ namespace Pathfinding.Visualization
             int testId)
         {
             GridMap simulationGrid = _originalGridMap.Clone();
-            DS3HazardState hazardState = CreateDS3HazardState(simulationGrid, startPos, targetPos, testId);
-            ApplyDS3HazardEvents(simulationGrid, 0, startPos, hazardState);
+            DS3EscapingTargetState escapeState = CreateDS3EscapingTargetState(targetPos, testId);
 
             var combinedResult = new Pathfinding.Core.PathfindingResult
             {
@@ -2314,13 +2053,12 @@ namespace Pathfinding.Visualization
             };
 
             Vector2Int currentPos = startPos;
-            int agentStep = 0;
-            int safetyLimit = simulationGrid.Width * simulationGrid.Height * 2;
+            int safetyLimit = simulationGrid.Width * simulationGrid.Height * 4;
 
-            while (currentPos != targetPos && safetyLimit-- > 0)
+            while (currentPos != escapeState.CurrentTarget && safetyLimit-- > 0)
             {
                 Pathfinding.Core.PathfindingResult currentPlan =
-                    algorithm.FindPath(simulationGrid, currentPos, targetPos);
+                    algorithm.FindPath(simulationGrid, currentPos, escapeState.CurrentTarget);
 
                 AccumulateSearchMetrics(combinedResult, currentPlan);
 
@@ -2328,10 +2066,9 @@ namespace Pathfinding.Visualization
                     return combinedResult;
 
                 bool needsReplan = false;
-                for (int pathIndex = 0; pathIndex < currentPlan.Path.Count && currentPos != targetPos; pathIndex++)
+                for (int pathIndex = 0; pathIndex < currentPlan.Path.Count && currentPos != escapeState.CurrentTarget; pathIndex++)
                 {
                     Vector2Int nextPos = currentPlan.Path[pathIndex];
-                    ApplyDS3HazardEvents(simulationGrid, agentStep, currentPos, hazardState);
 
                     if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
                     {
@@ -2342,25 +2079,33 @@ namespace Pathfinding.Visualization
 
                     Vector2Int previousPos = currentPos;
                     currentPos = nextPos;
-                    agentStep++;
                     combinedResult.Path.Add(currentPos);
                     combinedResult.PathLength += GetStepLength(currentPos, previousPos);
 
-                    if (currentPos == targetPos)
+                    if (currentPos == escapeState.CurrentTarget)
                     {
                         combinedResult.PathFound = true;
                         return combinedResult;
+                    }
+
+                    // Co 2 kroki agenta — cel ucieka
+                    bool escaped = TryEscapeTarget(simulationGrid, currentPos, escapeState);
+                    if (escaped)
+                    {
+                        needsReplan = true;
+                        combinedResult.PathRecalculations++;
+                        break;
                     }
 
                     if (--safetyLimit <= 0)
                         return combinedResult;
                 }
 
-                if (!needsReplan && currentPos != targetPos)
+                if (!needsReplan && currentPos != escapeState.CurrentTarget)
                     continue;
             }
 
-            combinedResult.PathFound = currentPos == targetPos;
+            combinedResult.PathFound = currentPos == escapeState.CurrentTarget;
             return combinedResult;
         }
 
@@ -2459,7 +2204,7 @@ namespace Pathfinding.Visualization
                 ScenarioType.Static => "Static",
                 ScenarioType.DS1_MovingObstacles => "DS1_MovingObstacles",
                 ScenarioType.DS2_PathObstruction => "DS2_PathObstruction",
-                ScenarioType.DS3_ExpandingHazard => "DS3_ExpandingHazard",
+                ScenarioType.DS3_EscapingTarget => "DS3_EscapingTarget",
                 _ => "Static"
             };
 

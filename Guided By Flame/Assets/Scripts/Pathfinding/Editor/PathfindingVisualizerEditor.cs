@@ -37,10 +37,7 @@ namespace Pathfinding.Visualization
         private SerializedProperty _patrolLength;
         private SerializedProperty _pathObstructionChanges;
         private SerializedProperty _pathObstructionSpacing;
-        private SerializedProperty _hazardSourceCount;
-        private SerializedProperty _hazardExpansionInterval;
-        private SerializedProperty _hazardMaxCells;
-        private SerializedProperty _hazardInfluenceRadius;
+        private SerializedProperty _maxTargetEscapes;
         private SerializedProperty _runBatchGeneration;
         private SerializedProperty _batchOutputDirectory;
         private SerializedProperty _basemapPrefab;
@@ -93,10 +90,7 @@ namespace Pathfinding.Visualization
             _patrolLength = serializedObject.FindProperty("patrolLength");
             _pathObstructionChanges = serializedObject.FindProperty("pathObstructionChanges");
             _pathObstructionSpacing = serializedObject.FindProperty("pathObstructionSpacing");
-            _hazardSourceCount = serializedObject.FindProperty("hazardSourceCount");
-            _hazardExpansionInterval = serializedObject.FindProperty("hazardExpansionInterval");
-            _hazardMaxCells = serializedObject.FindProperty("hazardMaxCells");
-            _hazardInfluenceRadius = serializedObject.FindProperty("hazardInfluenceRadius");
+            _maxTargetEscapes = serializedObject.FindProperty("maxTargetEscapes");
             _runBatchGeneration = serializedObject.FindProperty("runBatchGeneration");
             _batchOutputDirectory = serializedObject.FindProperty("batchOutputDirectory");
             _basemapPrefab = serializedObject.FindProperty("basemapPrefab");
@@ -264,7 +258,7 @@ namespace Pathfinding.Visualization
 
             bool showDs1 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS1_MovingObstacles;
             bool showDs2 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS2_PathObstruction;
-            bool showDs3 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS3_ExpandingHazard;
+            bool showDs3 = fullSuite || scenario == PathfindingVisualizer.ScenarioType.DS3_EscapingTarget;
 
             if (!showDs1 && !showDs2 && !showDs3)
                 return;
@@ -286,10 +280,7 @@ namespace Pathfinding.Visualization
 
             if (showDs3)
             {
-                EditorGUILayout.PropertyField(_hazardSourceCount);
-                EditorGUILayout.PropertyField(_hazardExpansionInterval);
-                EditorGUILayout.PropertyField(_hazardMaxCells);
-                EditorGUILayout.PropertyField(_hazardInfluenceRadius);
+                EditorGUILayout.PropertyField(_maxTargetEscapes);
             }
         }
 
