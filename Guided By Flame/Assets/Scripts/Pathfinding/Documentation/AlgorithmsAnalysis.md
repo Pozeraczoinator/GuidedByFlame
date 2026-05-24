@@ -394,7 +394,7 @@ JPS używa priorytetu podobnego do A\*:
 
 ### Ograniczenia
 
-Klasyczny JPS działa poprawnie przy założeniu jednolitego kosztu ruchu. W tej implementacji dodatkowo obowiązuje zakaz ścinania rogów, dlatego JPS jest traktowany jako osobny wariant algorytmu, a nie jako drugi wzorzec optymalności obok A\* i Dijkstry. Różnice długości względem A\* są raportowane w testach jako informacja, nie jako błąd determinizmu.
+JPS działa poprawnie przy założeniu jednolitego kosztu ruchu. W tej implementacji obowiązuje też zakaz ścinania rogów: ruch po przekątnej jest legalny tylko wtedy, gdy oba sąsiednie pola ortogonalne są wolne. Dla wąskich korytarzy algorytm wykrywa boczne otwarcia jako jump pointy, dzięki czemu może skręcać w labiryntach i topologiach corridor/scattered bez rozwijania każdego pola jak A\*.
 
 Jeżeli pola mają różne koszty, przeskakiwanie przez odcinki mogłoby pominąć ważne informacje o tańszej lub droższej trasie. Dlatego JPS nie jest używany dla map ważonych.
 
@@ -486,16 +486,25 @@ Benchmark zapisuje do CSV między innymi:
 | `AvgExecutionTicks` | Czas w tickach `Stopwatch`, przydatny dla bardzo szybkich operacji. |
 | `AvgGCAllocBytes` | Średnie alokacje pamięci widziane przez GC. |
 | `ExploredNodes` | Liczba węzłów faktycznie przetworzonych przez algorytm. |
+| `JumpScannedCells` | Liczba pól sprawdzonych wewnątrz procedury `Jump()` w JPS; dla innych algorytmów 0. |
 | `PathLength` | Długość znalezionej ścieżki w jednostkach geometrycznych. |
 | `DirectionChanges` | Liczba zmian kierunku na trasie. |
 | `PathSmoothness` | `DirectionChanges / PathLength`; im bliżej zera, tym gładsza ścieżka. |
 | `PathRecalculations` | Liczba wymuszonych rekalkulacji ścieżki w scenariuszach dynamicznych. |
+
+### DS3: Expanding Hazard Zone
+
+DS3 symuluje postępujące zagrożenie środowiskowe. Przed startem testu wybierane są deterministyczne źródła zagrożenia na podstawie `MapSeed + TestID`, bazowej mapy i referencyjnej ścieżki A\*. Następnie zagrożenie rozszerza się co ustaloną liczbę kroków agenta na sąsiednie pola walkable.
+
+Scenariusz jest dynamiczny, bo kolejne pola mapy stają się niedostępne podczas przejścia. Jest też deterministyczny, bo harmonogram źródeł i fal ekspansji jest tworzony przed wykonaniem algorytmów i nie zależy od losowości runtime.
 
 ### Dlaczego `ExploredNodes` jest bardzo ważne
 
 Czas wykonania zależy od sprzętu, obciążenia systemu i środowiska Unity. `ExploredNodes` jest bardziej algorytmiczną metryką: pokazuje, ile pól algorytm musiał naprawdę przeanalizować.
 
 Jeżeli dwa algorytmy mają podobny czas, ale jeden odwiedza znacznie mniej pól, może być bardziej skalowalny na większych mapach.
+
+Dla JPS trzeba czytać `ExploredNodes` razem z `JumpScannedCells`. `ExploredNodes` pokazuje liczbę rozwiniętych jump pointów, a `JumpScannedCells` pokazuje pola sprawdzone podczas przeskakiwania po prostych i przekątnych. Dzięki temu porównanie z A\* nie ukrywa pracy wykonanej wewnątrz `Jump()`.
 
 ### Dlaczego mierzona jest gładkość
 

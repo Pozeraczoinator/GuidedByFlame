@@ -84,7 +84,7 @@ namespace Pathfinding.Algorithms
                     return result;
                 }
 
-                IdentifySuccessors(currentNode, startPos, targetPos, grid, allNodes, openSet, closedSet);
+                IdentifySuccessors(currentNode, startPos, targetPos, grid, allNodes, openSet, closedSet, result);
             }
 
             sw.Stop();
@@ -94,7 +94,8 @@ namespace Pathfinding.Algorithms
         }
 
         private void IdentifySuccessors(Node currentNode, Vector2Int startPos, Vector2Int targetPos, GridMap grid,
-            Dictionary<Vector2Int, Node> allNodes, MinHeap<Node> openSet, HashSet<Vector2Int> closedSet)
+            Dictionary<Vector2Int, Node> allNodes, MinHeap<Node> openSet, HashSet<Vector2Int> closedSet,
+            Pathfinding.Core.PathfindingResult result)
         {
             List<Vector2Int> neighbors = FindNeighbors(currentNode, grid);
 
@@ -105,7 +106,7 @@ namespace Pathfinding.Algorithms
                     Math.Sign(neighborPos.y - currentNode.Pos.y)
                 );
 
-                Vector2Int? jumpPoint = Jump(currentNode.Pos, dir, targetPos, grid);
+                Vector2Int? jumpPoint = Jump(currentNode.Pos, dir, targetPos, grid, result);
 
                 if (jumpPoint.HasValue)
                 {
@@ -137,11 +138,13 @@ namespace Pathfinding.Algorithms
             }
         }
 
-        private Vector2Int? Jump(Vector2Int currentPos, Vector2Int dir, Vector2Int targetPos, GridMap grid)
+        private Vector2Int? Jump(Vector2Int currentPos, Vector2Int dir, Vector2Int targetPos, GridMap grid,
+            Pathfinding.Core.PathfindingResult result)
         {
             Vector2Int nextPos = currentPos + dir;
+            result.JumpScannedCells++;
 
-            if (!grid.IsWalkable(nextPos))
+            if (!CanMove(grid, currentPos, dir))
                 return null;
 
             int x = nextPos.x;
@@ -169,8 +172,8 @@ namespace Pathfinding.Algorithms
                     return nextPos;
                 }
 
-                if (Jump(nextPos, new Vector2Int(dx, 0), targetPos, grid).HasValue ||
-                    Jump(nextPos, new Vector2Int(0, dy), targetPos, grid).HasValue)
+                if (Jump(nextPos, new Vector2Int(dx, 0), targetPos, grid, result).HasValue ||
+                    Jump(nextPos, new Vector2Int(0, dy), targetPos, grid, result).HasValue)
                 {
                     return nextPos;
                 }
@@ -179,33 +182,23 @@ namespace Pathfinding.Algorithms
             {
                 if (dx != 0) // Poziomo
                 {
-                    if (HasOrthogonalBranch(grid, x, y, true))
-                    {
-                        return nextPos;
-                    }
-
-                    if ((grid.IsWalkable(x + dx, y + 1) && !grid.IsWalkable(x, y + 1)) ||
-                        (grid.IsWalkable(x + dx, y - 1) && !grid.IsWalkable(x, y - 1)))
+                    if (HasNewSideOpening(grid, currentPos, nextPos, new Vector2Int(0, 1)) ||
+                        HasNewSideOpening(grid, currentPos, nextPos, new Vector2Int(0, -1)))
                     {
                         return nextPos;
                     }
                 }
                 else // Pionowo
                 {
-                    if (HasOrthogonalBranch(grid, x, y, false))
-                    {
-                        return nextPos;
-                    }
-
-                    if ((grid.IsWalkable(x + 1, y + dy) && !grid.IsWalkable(x + 1, y)) ||
-                        (grid.IsWalkable(x - 1, y + dy) && !grid.IsWalkable(x - 1, y)))
+                    if (HasNewSideOpening(grid, currentPos, nextPos, new Vector2Int(1, 0)) ||
+                        HasNewSideOpening(grid, currentPos, nextPos, new Vector2Int(-1, 0)))
                     {
                         return nextPos;
                     }
                 }
             }
 
-            return Jump(nextPos, dir, targetPos, grid);
+            return Jump(nextPos, dir, targetPos, grid, result);
         }
 
         private List<Vector2Int> FindNeighbors(Node node, GridMap grid)
@@ -239,27 +232,11 @@ namespace Pathfinding.Algorithms
                 {
                     if (dx == 0)
                     {
-                        AddIfWalkable(neighbors, grid, x + 1, y);
-                        AddIfWalkable(neighbors, grid, x - 1, y);
-
-                        if (grid.IsWalkable(x, y + dy))
-                        {
-                            neighbors.Add(new Vector2Int(x, y + dy));
-                            if (!grid.IsWalkable(x + 1, y)) neighbors.Add(new Vector2Int(x + 1, y + dy));
-                            if (!grid.IsWalkable(x - 1, y)) neighbors.Add(new Vector2Int(x - 1, y + dy));
-                        }
+                        AddStraightNeighbors(neighbors, grid, node.Pos, new Vector2Int(0, dy));
                     }
                     else
                     {
-                        AddIfWalkable(neighbors, grid, x, y + 1);
-                        AddIfWalkable(neighbors, grid, x, y - 1);
-
-                        if (grid.IsWalkable(x + dx, y))
-                        {
-                            neighbors.Add(new Vector2Int(x + dx, y));
-                            if (!grid.IsWalkable(x, y + 1)) neighbors.Add(new Vector2Int(x + dx, y + 1));
-                            if (!grid.IsWalkable(x, y - 1)) neighbors.Add(new Vector2Int(x + dx, y - 1));
-                        }
+                        AddStraightNeighbors(neighbors, grid, node.Pos, new Vector2Int(dx, 0));
                     }
                 }
             }
@@ -288,24 +265,60 @@ namespace Pathfinding.Algorithms
             return neighbors;
         }
 
-        private bool HasOrthogonalBranch(GridMap grid, int x, int y, bool movingHorizontally)
+        private bool CanMove(GridMap grid, Vector2Int from, Vector2Int dir)
         {
-            if (movingHorizontally)
+            Vector2Int to = from + dir;
+
+            if (!grid.IsWalkable(to))
+                return false;
+
+            if (dir.x != 0 && dir.y != 0)
             {
-                return grid.IsWalkable(x, y + 1) || grid.IsWalkable(x, y - 1);
+                return grid.IsWalkable(from.x + dir.x, from.y) &&
+                       grid.IsWalkable(from.x, from.y + dir.y);
             }
 
-            return grid.IsWalkable(x + 1, y) || grid.IsWalkable(x - 1, y);
+            return true;
         }
 
-        private void AddIfWalkable(List<Vector2Int> neighbors, GridMap grid, int x, int y)
+        private bool HasNewSideOpening(GridMap grid, Vector2Int previous, Vector2Int current, Vector2Int sideDir)
         {
-            if (!grid.IsWalkable(x, y))
+            return grid.IsWalkable(current + sideDir) && !grid.IsWalkable(previous + sideDir);
+        }
+
+        private void AddStraightNeighbors(List<Vector2Int> neighbors, GridMap grid, Vector2Int pos, Vector2Int forwardDir)
+        {
+            AddIfCanMove(neighbors, grid, pos, forwardDir);
+
+            if (forwardDir.x != 0)
+            {
+                AddSideOpeningNeighbors(neighbors, grid, pos, forwardDir, new Vector2Int(0, 1));
+                AddSideOpeningNeighbors(neighbors, grid, pos, forwardDir, new Vector2Int(0, -1));
+            }
+            else
+            {
+                AddSideOpeningNeighbors(neighbors, grid, pos, forwardDir, new Vector2Int(1, 0));
+                AddSideOpeningNeighbors(neighbors, grid, pos, forwardDir, new Vector2Int(-1, 0));
+            }
+        }
+
+        private void AddSideOpeningNeighbors(List<Vector2Int> neighbors, GridMap grid, Vector2Int pos, Vector2Int forwardDir, Vector2Int sideDir)
+        {
+            if (!HasNewSideOpening(grid, pos - forwardDir, pos, sideDir))
                 return;
 
-            Vector2Int pos = new Vector2Int(x, y);
-            if (!neighbors.Contains(pos))
-                neighbors.Add(pos);
+            AddIfCanMove(neighbors, grid, pos, sideDir);
+            AddIfCanMove(neighbors, grid, pos, forwardDir + sideDir);
+        }
+
+        private void AddIfCanMove(List<Vector2Int> neighbors, GridMap grid, Vector2Int pos, Vector2Int dir)
+        {
+            if (CanMove(grid, pos, dir))
+            {
+                Vector2Int next = pos + dir;
+                if (!neighbors.Contains(next))
+                    neighbors.Add(next);
+            }
         }
 
         private void RetracePath(Node startNode, Node endNode, Pathfinding.Core.PathfindingResult result)

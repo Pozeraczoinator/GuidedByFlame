@@ -99,8 +99,8 @@ namespace Pathfinding.Algorithms
                         continue;
 
                     // Ortogonalnie koszt 10, przekątna 14. Zakładamy grid 8-kierunkowy.
-                    // DS3: Uwzględniamy wagę terenu (GetMovementCost) — koszt wejścia na pole sąsiada.
-                    // Na mapach bez wag (DS2/Static) GetMovementCost() zwraca 1.0f → brak zmiany.
+                    // W scenariuszach ważonych GetMovementCost() określa koszt wejścia na pole.
+                    // Na mapach bez wag GetMovementCost() zwraca 1.0f → brak zmiany.
                     float terrainCost = grid.GetMovementCost(neighbor.X, neighbor.Y);
                     int moveCostToNeighbor = currentNode.GCost + (int)(GetOctagonalDistance(currentNode, neighbor) * terrainCost);
                     

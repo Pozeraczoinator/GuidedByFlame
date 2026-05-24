@@ -81,7 +81,6 @@ Pathfinding/
 | Długość ortogonalna (PathLength) | 1.0f |
 | Długość diagonalna (PathLength) | 1.414f |
 | Domyślny koszt terenu | 1.0f |
-| Koszty DS3 | 1.0, 2.0, 5.0, 10.0 |
 
 ---
 
@@ -91,6 +90,7 @@ Pathfinding/
 |---------|-----|------|
 | `PathFound` | bool | Czy ścieżka istnieje |
 | `ExploredNodes` | int | Węzły dodane do closed set |
+| `JumpScannedCells` | int | Pola sprawdzone wewnątrz skoków JPS; dla innych algorytmów 0 |
 | `PathLength` | float | Geometryczna długość ścieżki |
 | `ExecutionTimeMs` | double | Czas Stopwatch |
 | `ExecutionTicks` | long | CPU ticks Stopwatch |
@@ -113,9 +113,9 @@ Pathfinding/
 | **Static** | Mapa niezmienna |
 | **DS1** | Ruchome przeszkody patrolowe (RandomWalk, ping-pong) |
 | **DS2** | Deterministyczny harmonogram dynamicznych blokad w korytarzu start-cel |
-| **DS3** | Deterministyczne bramy/drzwi otwierane lub zamykane na trasie |
+| **DS3** | Expanding Hazard Zone: deterministyczne źródła zagrożenia rozszerzają się po mapie w trakcie ruchu agenta |
 
-**JPS jest WYKLUCZONY z DS3** (nie wspiera weighted gridów).
+DS3 nie używa losowości runtime. Harmonogram źródeł i fal ekspansji powstaje przed pomiarem na podstawie `MapSeed + TestID + 8000`, bazowej siatki i referencyjnej ścieżki A\*. Dzięki temu każdy algorytm mierzy ten sam scenariusz dynamiczny.
 
 ---
 
@@ -151,7 +151,7 @@ Od wersji `feature/pathfinding-audit-determinism`:
 ## 9. Format Wyjściowy CSV
 
 **Separator**: średnik (`;`)
-**33 kolumny**:
+**34 kolumny**:
 ```
 TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;
 MapTopology;MapSeed;MapDensity;MapWidth;MapHeight;
@@ -159,7 +159,7 @@ DistanceBucket;EuclideanDistance;OctagonalDistance;ReferenceShortestPathLength;
 PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;
 AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;
 AvgExecutionTicks;AvgGCAllocBytes;
-ExploredNodes;PathLength;DirectionChanges;PathSmoothness;PathRecalculations;CPUTemperature
+ExploredNodes;JumpScannedCells;PathLength;DirectionChanges;PathSmoothness;PathRecalculations;CPUTemperature
 ```
 
 ---
@@ -172,8 +172,11 @@ ExploredNodes;PathLength;DirectionChanges;PathSmoothness;PathRecalculations;CPUT
 | `randomSeed` | 42 | PathfindingVisualizer |
 | `movingObstacleCount` | 3 | PathfindingVisualizer |
 | `patrolLength` | 6 | PathfindingVisualizer |
-| `pathObstructionChanges` | 6 | PathfindingVisualizer |
-| `gateToggleCount` | 4 | PathfindingVisualizer |
+| `pathObstructionChanges` | 12 | PathfindingVisualizer |
+| `hazardSourceCount` | 4 | PathfindingVisualizer |
+| `hazardExpansionInterval` | 3 | PathfindingVisualizer |
+| `hazardMaxCells` | 192 | PathfindingVisualizer |
+| `hazardInfluenceRadius` | 6 | PathfindingVisualizer |
 | `pairsPerBucket` | 30 | PathfindingVisualizer |
 | `_greedyWeight` | 50.0f | CustomGreedyAlgorithm (konstruktor) |
 | `_turnPenalty` | 2 | CustomGreedyAlgorithm (konstruktor) |

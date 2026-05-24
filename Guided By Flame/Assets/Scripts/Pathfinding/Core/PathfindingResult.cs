@@ -27,6 +27,13 @@ namespace Pathfinding.Core
         /// Kluczowa metryka algorytmiczna — niezależna od mocy procesora.
         /// </summary>
         public int ExploredNodes { get; set; }
+
+        /// <summary>
+        /// Liczba pól sprawdzonych wewnątrz procedury Jump() w JPS.
+        /// Dla pozostałych algorytmów pozostaje 0. Ta metryka pokazuje pracę ukrytą
+        /// za skokami, której nie widać w ExploredNodes.
+        /// </summary>
+        public int JumpScannedCells { get; set; }
         
         /// <summary>
         /// Czas wykonania wyrażony w milisekundach wykorzystując Stopwatch.
