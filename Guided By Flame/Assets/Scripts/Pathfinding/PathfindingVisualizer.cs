@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Serialization;
 using Pathfinding.Core;
@@ -43,7 +44,7 @@ namespace Pathfinding.Visualization
         /// Scenariusze testowe do pracy magisterskiej:
         /// - Static: stała mapa, brak zmian
         /// - DS1_MovingObstacles: ruchome przeszkody, wspólny deterministyczny snapshot dla algorytmów
-        /// - DS2_PathObstruction: dodawanie/usuwanie przeszkód na bazowej trasie NPC
+        /// - DS2_PathObstruction: deterministyczne dodawanie przeszkód na trasie referencyjnej
         /// - DS3_EscapingTarget: punkt końcowy ucieka co 2 kroki agenta o 1 pole
         /// </summary>
         public enum ScenarioType
@@ -91,7 +92,7 @@ namespace Pathfinding.Visualization
         [Range(1, 200)]
         public int benchmarkIterations = 30;
 
-        [Tooltip("Nazwa pliku wynikowego CSV (34 kolumny, separator: średnik).")]
+        [Tooltip("Nazwa pliku wynikowego CSV (35 kolumn, separator: średnik).")]
         public string outputFileName = "benchmark_results.csv";
 
         [Header("═══ Monitoring Sprzętowy ═══")]
@@ -101,13 +102,13 @@ namespace Pathfinding.Visualization
         [Header("═══ Headless Benchmark ═══")]
         [Tooltip("Ile iteracji jednego algorytmu wykonać przed oddaniem klatki Unity w trybie bez wizualizacji.")]
         [Range(1, 30)]
-        public int headlessIterationsPerYield = 3;
+        public int headlessIterationsPerYield = 15;
 
         [Tooltip("Co ile wierszy CSV wymusić zapis na dysk w trybie bez wizualizacji.")]
         [Range(1, 10000)]
         public int headlessRowsPerFlush = 250;
 
-        [Tooltip("Wymusza pelne GC przed cold startem kazdego algorytmu. Dokladniejsze GCAlloc, ale bardzo wolne w duzych full suite.")]
+        [Tooltip("Opcjonalnie wymusza pełne GC przed cold startem. Nie jest wymagane przez licznik zaalokowanych bajtów i znacząco spowalnia full suite.")]
         public bool forceGcBeforeColdStart = false;
 
         [Tooltip("Klawisz proszący benchmark o zatrzymanie po najbliższej bezpiecznej porcji pracy.")]
@@ -153,22 +154,30 @@ namespace Pathfinding.Visualization
         public int pairsPerBucket = 30;
 
         [Header("═══ DS1: Ruchome Przeszkody ═══")]
-        [Tooltip("Liczba ruchomych przeszkód na mapie (patrol guards).")]
-        [Range(1, 20)]
+        [Tooltip("Minimalna liczba ruchomych przeszkód. Dla długich tras DS1 skaluje ją automatycznie: około 1 przeszkoda na 12 kroków trasy referencyjnej.")]
+        [Range(1, 64)]
         public int movingObstacleCount = 3;
 
         [Tooltip("Długość trasy patrol każdej przeszkody (w polach).")]
         [Range(3, 20)]
         public int patrolLength = 6;
 
-        [Header("═══ DS2: Blokady na Trasie ═══")]
-        [Tooltip("Ile dynamicznych blokad DS2 może pojawić się podczas jednego przejścia.")]
-        [Range(1, 60)]
-        public int pathObstructionChanges = 12;
+        [Tooltip("Deterministyczny limit ponownych wyznaczeń ścieżki w jednym przebiegu DS1.")]
+        [Range(1, 1000)]
+        public int maxDS1Replans = 120;
 
-        [Tooltip("Co który krok bazowej trasy rozważać jako kandydat do blokady.")]
+        [Tooltip("DS1 kończy się niepowodzeniem po tylu kolejnych nieudanych replanach bez ruchu agenta.")]
+        [Range(1, 200)]
+        public int maxDS1ConsecutiveFailedReplans = 20;
+
+        [Header("═══ DS2: Blokady na Trasie ═══")]
+        [Tooltip("Górny limit trwałych blokad DS2. Faktyczna liczba skaluje się z długością trasy.")]
+        [Range(1, 60)]
+        public int pathObstructionChanges = 40;
+
+        [Tooltip("Co ile kroków agenta uruchamiać kolejne zdarzenie DS2.")]
         [Range(2, 12)]
-        public int pathObstructionSpacing = 4;
+        public int pathObstructionSpacing = 8;
 
         [Header("═══ DS3: Escaping Target ═══")]
         [Tooltip("Maksymalna liczba ucieczek punktu końcowego w jednym teście DS3.")]
@@ -233,6 +242,18 @@ namespace Pathfinding.Visualization
         private int _suiteTestId = 0;
         private bool _stopBenchmarkRequested = false;
         private int _rowsSinceFlush = 0;
+        private double _nextFullSuiteHeartbeatRealtime = 0d;
+        private int _cachedDS1ReferenceTestId = -1;
+        private Vector2Int _cachedDS1ReferenceStart;
+        private Vector2Int _cachedDS1ReferenceTarget;
+        private int _cachedDS1ReferenceMapSeed;
+        private int _cachedDS1ReferenceMapWidth;
+        private int _cachedDS1ReferenceMapHeight;
+        private List<Vector2Int> _cachedDS1ReferencePath;
+        private MovingObstacleManager _cachedDS1InitialManager;
+        private int _cachedTickLimitTestId = -1;
+        private ScenarioType _cachedTickLimitScenario;
+        private int _cachedDynamicTickLimit;
 
         // Dynamic scenario managers
         private MovingObstacleManager _ds1Manager;
@@ -250,6 +271,10 @@ namespace Pathfinding.Visualization
         private bool ShouldVisualize => !runWithoutVisualization && !runFullBenchmarkSuite;
         private bool ShouldLogDetailedBenchmark => ShouldVisualize;
         private const int HeadlessProgressInterval = 50;
+        private const int FullSuiteCheckpointInterval = 50;
+        private const double FullSuiteHeartbeatIntervalSeconds = 30d;
+        private const long FullSuiteMaxWorkSliceMs = 5000;
+        private const string AllocationMeasurementVersion = "ThreadAllocatedBytesV1";
 
         private class MeasurementBatch
         {
@@ -260,14 +285,27 @@ namespace Pathfinding.Visualization
 
         private class DS2DynamicState
         {
-            public readonly List<List<Vector2Int>> Schedule;
+            public readonly List<DS2ObstructionEvent> Schedule;
+            // Zachowane wyłącznie dla nieużywanego, starszego wariantu generatora DS2.
             public readonly System.Random Rng = new System.Random(0);
             public readonly HashSet<Vector2Int> BlockedCells = new HashSet<Vector2Int>();
             public int NextEventIndex;
 
-            public DS2DynamicState(List<List<Vector2Int>> schedule)
+            public DS2DynamicState(List<DS2ObstructionEvent> schedule)
             {
                 Schedule = schedule;
+            }
+        }
+
+        private class DS2ObstructionEvent
+        {
+            public readonly int TriggerStep;
+            public readonly List<Vector2Int> Cells;
+
+            public DS2ObstructionEvent(int triggerStep, List<Vector2Int> cells)
+            {
+                TriggerStep = triggerStep;
+                Cells = cells;
             }
         }
 
@@ -275,14 +313,17 @@ namespace Pathfinding.Visualization
         {
             public Vector2Int CurrentTarget;
             public readonly Vector2Int OriginalTarget;
+            public readonly Vector2Int EscapeAnchor;
             public readonly System.Random Rng;
             public int StepsSinceLastEscape;
             public int TotalEscapes;
 
-            public DS3EscapingTargetState(Vector2Int initialTarget, int seed)
+            public DS3EscapingTargetState(
+                Vector2Int initialTarget, Vector2Int escapeAnchor, int seed)
             {
                 CurrentTarget = initialTarget;
                 OriginalTarget = initialTarget;
+                EscapeAnchor = escapeAnchor;
                 Rng = new System.Random(seed);
                 StepsSinceLastEscape = 0;
                 TotalEscapes = 0;
@@ -334,6 +375,201 @@ namespace Pathfinding.Visualization
             int expectedPairsPerMap = pairsPerBucket * 3;
 
             return (generatedMapConfigs + fileMapConfigs) * scenarioCount * expectedPairsPerMap;
+        }
+
+        private static long BeginAllocationMeasurement(bool forceFullCollection)
+        {
+            if (forceFullCollection)
+                HardwareMonitor.ForceGCAndGetMemory();
+
+            return GC.GetAllocatedBytesForCurrentThread();
+        }
+
+        private static void CalculateReportedPathMetrics(
+            Pathfinding.Core.PathfindingResult result,
+            Vector2Int startPos,
+            bool isColdStart)
+        {
+            if (!isColdStart)
+                return;
+
+            result.CalculatePathCost(startPos);
+            if (result.PathFound)
+                result.CalculateSmoothnessMetrics(startPos);
+        }
+
+        private string BuildSuiteFingerprint()
+        {
+            string raw = string.Join("|", new[]
+            {
+                BenchmarkMetrics.GetCsvHeader(),
+                AllocationMeasurementVersion,
+                benchmarkMode.ToString(),
+                selectedAlgorithm.ToString(),
+                benchmarkIterations.ToString(CultureInfo.InvariantCulture),
+                includeFileMapInFullSuite.ToString(),
+                useDistanceBucketing.ToString(),
+                pairsPerBucket.ToString(CultureInfo.InvariantCulture),
+                movingObstacleCount.ToString(CultureInfo.InvariantCulture),
+                patrolLength.ToString(CultureInfo.InvariantCulture),
+                maxDS1Replans.ToString(CultureInfo.InvariantCulture),
+                maxDS1ConsecutiveFailedReplans.ToString(CultureInfo.InvariantCulture),
+                pathObstructionChanges.ToString(CultureInfo.InvariantCulture),
+                pathObstructionSpacing.ToString(CultureInfo.InvariantCulture),
+                maxTargetEscapes.ToString(CultureInfo.InvariantCulture),
+                string.Join(",", GetSuiteMapSizes()),
+                string.Join(",", GetSuiteTopologies()),
+                string.Join(",", GetSuiteDensities().Select(value =>
+                    value.ToString("R", CultureInfo.InvariantCulture))),
+                string.Join(",", GetSuiteSeeds())
+            });
+
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(raw));
+        }
+
+        private int PrepareFullSuiteResume(
+            string resultsPath,
+            string checkpointPath,
+            string suiteFingerprint,
+            int estimatedTotalTestCases)
+        {
+            int resumeTestId = ReadFullSuiteCheckpoint(checkpointPath, suiteFingerprint);
+
+            // Obsługa plików utworzonych przed dodaniem checkpointów: jeżeli CSV ma
+            // aktualny schemat, odnajdź pierwszy niekompletny TestID i uratuj dane.
+            if (resumeTestId < 0 && File.Exists(resultsPath))
+                resumeTestId = FindFirstIncompleteTestId(resultsPath);
+
+            if (resumeTestId <= 0 || resumeTestId >= estimatedTotalTestCases)
+            {
+                if (File.Exists(checkpointPath))
+                    File.Delete(checkpointPath);
+                return 0;
+            }
+
+            TruncateCsvAtTestId(resultsPath, resumeTestId);
+            WriteFullSuiteCheckpoint(checkpointPath, suiteFingerprint, resumeTestId);
+            return resumeTestId;
+        }
+
+        private int ReadFullSuiteCheckpoint(string checkpointPath, string suiteFingerprint)
+        {
+            if (!File.Exists(checkpointPath))
+                return -1;
+
+            try
+            {
+                string[] lines = File.ReadAllLines(checkpointPath);
+                if (lines.Length != 2 || lines[0] != suiteFingerprint ||
+                    !int.TryParse(lines[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int nextTestId))
+                {
+                    Debug.LogWarning("[Visualizer] Checkpoint nie pasuje do bieżącej konfiguracji. " +
+                                     "Benchmark rozpocznie nowy plik.");
+                    return 0;
+                }
+
+                return Mathf.Max(0, nextTestId);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Visualizer] Nie można odczytać checkpointu: {ex.Message}. " +
+                                 "Benchmark rozpocznie nowy plik.");
+                return 0;
+            }
+        }
+
+        private int FindFirstIncompleteTestId(string resultsPath)
+        {
+            try
+            {
+                using (var reader = new StreamReader(resultsPath))
+                {
+                    if (reader.ReadLine() != BenchmarkMetrics.GetCsvHeader())
+                        return 0;
+
+                    var expectedAlgorithms = new HashSet<string>(
+                        GetAlgorithmsToRun().Select(algorithm => algorithm.AlgorithmName));
+                    var algorithmsForCurrentTest = new HashSet<string>();
+                    int currentTestId = 0;
+                    string line;
+
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        string[] columns = line.Split(';');
+                        if (columns.Length != 35 ||
+                            !int.TryParse(columns[0], NumberStyles.Integer,
+                                CultureInfo.InvariantCulture, out int rowTestId))
+                            return currentTestId;
+
+                        if (rowTestId != currentTestId)
+                        {
+                            if (rowTestId != currentTestId + 1 ||
+                                !algorithmsForCurrentTest.SetEquals(expectedAlgorithms))
+                                return currentTestId;
+
+                            currentTestId = rowTestId;
+                            algorithmsForCurrentTest.Clear();
+                        }
+
+                        if (!expectedAlgorithms.Contains(columns[1]) ||
+                            !algorithmsForCurrentTest.Add(columns[1]))
+                            return currentTestId;
+                    }
+
+                    return algorithmsForCurrentTest.SetEquals(expectedAlgorithms)
+                        ? currentTestId + 1
+                        : currentTestId;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Visualizer] Nie można zweryfikować istniejącego CSV: {ex.Message}. " +
+                                 "Benchmark rozpocznie nowy plik.");
+                return 0;
+            }
+        }
+
+        private void TruncateCsvAtTestId(string resultsPath, int firstTestIdToRepeat)
+        {
+            string temporaryPath = resultsPath + ".resume.tmp";
+            using (var reader = new StreamReader(resultsPath))
+            using (var writer = new StreamWriter(temporaryPath, false))
+            {
+                string header = reader.ReadLine();
+                writer.WriteLine(header);
+
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    int separator = line.IndexOf(';');
+                    if (separator <= 0 ||
+                        !int.TryParse(line.Substring(0, separator), NumberStyles.Integer,
+                            CultureInfo.InvariantCulture, out int testId) ||
+                        testId >= firstTestIdToRepeat)
+                        break;
+
+                    writer.WriteLine(line);
+                }
+            }
+
+            File.Copy(temporaryPath, resultsPath, true);
+            File.Delete(temporaryPath);
+        }
+
+        private void WriteFullSuiteCheckpoint(
+            string checkpointPath, string suiteFingerprint, int nextTestId)
+        {
+            string temporaryPath = checkpointPath + ".tmp";
+            File.WriteAllLines(temporaryPath, new[]
+            {
+                suiteFingerprint,
+                nextTestId.ToString(CultureInfo.InvariantCulture)
+            });
+
+            if (File.Exists(checkpointPath))
+                File.Replace(temporaryPath, checkpointPath, null);
+            else
+                File.Move(temporaryPath, checkpointPath);
         }
 
         private Sprite GetObstacleSpriteForCell(int x, int y)
@@ -488,6 +724,11 @@ namespace Pathfinding.Visualization
                     TestCase tc = _testCases[_currentTestCaseIndex];
                     int testId = _currentTestCaseIndex;
                     _currentTestCaseIndex++;
+
+                    // Każdy przypadek rozpoczyna się od identycznej mapy bazowej.
+                    // Bez resetu snapshot DS1 z poprzedniego testu pozostawiał
+                    // na mapie obce przeszkody ruchome.
+                    _gridMap = _originalGridMap.Clone();
 
                     Vector2Int startPos = new Vector2Int(tc.startX, tc.startY);
                     Vector2Int targetPos = new Vector2Int(tc.targetX, tc.targetY);
@@ -663,21 +904,42 @@ namespace Pathfinding.Visualization
         private IEnumerator RunFullBenchmarkSuite()
         {
             string resultsPath = Path.Combine(Application.dataPath, "..", outputFileName);
+            string checkpointPath = resultsPath + ".checkpoint";
             ScenarioType originalScenario = scenario;
             MapTopology originalMapSource = mapSource;
             int originalRandomSeed = randomSeed;
             List<TestCase> originalTestCases = _testCases;
             int estimatedTotalTestCases = EstimateFullSuiteTestCaseTotal();
+            int originalVSyncCount = QualitySettings.vSyncCount;
+            int originalTargetFrameRate = Application.targetFrameRate;
+            bool originalRunInBackground = Application.runInBackground;
+            StackTraceLogType originalLogStackTrace =
+                Application.GetStackTraceLogType(LogType.Log);
+
+            // Full suite nie renderuje animacji. Każde oczekiwanie na VSync lub rozbudowany
+            // stack trace zwykłego heartbeat'u jest czystym narzutem poza eksperymentem.
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = -1;
+            Application.runInBackground = true;
+            Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+
+            string suiteFingerprint = BuildSuiteFingerprint();
+            int resumeTestId = PrepareFullSuiteResume(
+                resultsPath, checkpointPath, suiteFingerprint, estimatedTotalTestCases);
 
             _suiteTestId = 0;
             _stopBenchmarkRequested = false;
             _rowsSinceFlush = 0;
+            _nextFullSuiteHeartbeatRealtime = Time.realtimeSinceStartupAsDouble;
 
             Debug.Log("[Visualizer] START PEŁNEGO BENCHMARKU HEADLESS");
             Debug.Log($"[Visualizer] Tryb algorytmów: {benchmarkMode} | Iteracje: {benchmarkIterations}");
             Debug.Log($"[Visualizer] Przerwanie: naciśnij {stopBenchmarkKey}, zapis CSV zostanie domknięty.");
             Debug.Log($"[Visualizer] Planowany postęp: {FormatProgress(0, estimatedTotalTestCases, "testów")}");
             Debug.Log($"[Visualizer] Wyniki CSV: {resultsPath}");
+            if (resumeTestId > 0)
+                Debug.Log($"[Visualizer] Wznawianie od TestID={resumeTestId}. " +
+                          "Wszystkie wcześniejsze kompletne przypadki pozostają w CSV.");
 
             float tempStart = -1f;
             if (monitorCPUTemperature)
@@ -687,10 +949,15 @@ namespace Pathfinding.Visualization
                 Debug.Log($"[HardwareMonitor] Temp. CPU na starcie: {tempStart:F1}°C");
             }
 
-            using (StreamWriter writer = new StreamWriter(resultsPath, false))
+            using (StreamWriter writer = new StreamWriter(resultsPath, resumeTestId > 0))
             {
                 writer.AutoFlush = false;
-                writer.WriteLine(BenchmarkMetrics.GetCsvHeader());
+                if (resumeTestId == 0)
+                {
+                    writer.WriteLine(BenchmarkMetrics.GetCsvHeader());
+                    writer.Flush();
+                    WriteFullSuiteCheckpoint(checkpointPath, suiteFingerprint, 0);
+                }
 
                 if (includeFileMapInFullSuite && LoadGridMap())
                 {
@@ -700,7 +967,8 @@ namespace Pathfinding.Visualization
                     _activeMapWidth = _gridMap.Width;
                     _activeMapHeight = _gridMap.Height;
                     _testCases = GenerateTestCasesForMap(_gridMap, randomSeed);
-                    yield return StartCoroutine(RunAllScenariosForCurrentMap(writer, estimatedTotalTestCases));
+                    yield return StartCoroutine(RunAllScenariosForCurrentMap(
+                        writer, estimatedTotalTestCases, resumeTestId, checkpointPath, suiteFingerprint));
                 }
 
                 foreach ((int width, int height) size in GetSuiteMapSizes())
@@ -737,7 +1005,8 @@ namespace Pathfinding.Visualization
                                 _testCases = GenerateTestCasesForMap(_gridMap, seed);
 
                                 Debug.Log($"[Visualizer] Mapa: {_activeMapTopology}, rozmiar={_activeMapWidth}x{_activeMapHeight}, density={density:P0}, seed={seed}, testy={_testCases.Count}");
-                                yield return StartCoroutine(RunAllScenariosForCurrentMap(writer, estimatedTotalTestCases));
+                                yield return StartCoroutine(RunAllScenariosForCurrentMap(
+                                    writer, estimatedTotalTestCases, resumeTestId, checkpointPath, suiteFingerprint));
                             }
                         }
                     }
@@ -758,6 +1027,10 @@ namespace Pathfinding.Visualization
             randomSeed = originalRandomSeed;
             _testCases = originalTestCases;
             _shuffleRng = new System.Random(randomSeed);
+            QualitySettings.vSyncCount = originalVSyncCount;
+            Application.targetFrameRate = originalTargetFrameRate;
+            Application.runInBackground = originalRunInBackground;
+            Application.SetStackTraceLogType(LogType.Log, originalLogStackTrace);
 
             if (_stopBenchmarkRequested)
             {
@@ -765,6 +1038,8 @@ namespace Pathfinding.Visualization
             }
             else
             {
+                if (File.Exists(checkpointPath))
+                    File.Delete(checkpointPath);
                 Debug.Log($"[Visualizer] PEŁNY BENCHMARK ZAKOŃCZONY. Wyniki: {Path.GetFullPath(resultsPath)}");
             }
 
@@ -772,7 +1047,12 @@ namespace Pathfinding.Visualization
             _isAutoRunning = false;
         }
 
-        private IEnumerator RunAllScenariosForCurrentMap(StreamWriter writer, int estimatedTotalTestCases)
+        private IEnumerator RunAllScenariosForCurrentMap(
+            StreamWriter writer,
+            int estimatedTotalTestCases,
+            int resumeTestId,
+            string checkpointPath,
+            string suiteFingerprint)
         {
             GridMap baseMap = _gridMap.Clone();
             List<TestCase> mapTestCases = new List<TestCase>(_testCases);
@@ -790,6 +1070,12 @@ namespace Pathfinding.Visualization
                 {
                     if (_stopBenchmarkRequested)
                         yield break;
+
+                    if (_suiteTestId < resumeTestId)
+                    {
+                        _suiteTestId++;
+                        continue;
+                    }
 
                     _gridMap = baseMap.Clone();
                     _originalGridMap = baseMap.Clone();
@@ -821,9 +1107,23 @@ namespace Pathfinding.Visualization
                             yield break;
 
                         GridMap algorithmGrid = scenarioSnapshot;
-                        Pathfinding.Core.PathfindingResult ignoredVisualResult;
-                        MeasureAlgorithm(algorithm, algorithmGrid, startPos, targetPos,
-                            _suiteTestId, currentDensity, out BenchmarkMetrics metrics, out ignoredVisualResult);
+                        var measurement = new MeasurementBatch();
+                        if (Time.realtimeSinceStartupAsDouble >= _nextFullSuiteHeartbeatRealtime)
+                        {
+                            Debug.Log($"[Visualizer] Benchmark pracuje: " +
+                                      $"{FormatProgress(_suiteTestId, estimatedTotalTestCases, "testów")} | " +
+                                      $"TestID={_suiteTestId} | {scenario} | {algorithm.AlgorithmName}");
+                            _nextFullSuiteHeartbeatRealtime =
+                                Time.realtimeSinceStartupAsDouble + FullSuiteHeartbeatIntervalSeconds;
+                        }
+                        yield return StartCoroutine(MeasureAlgorithmBatched(
+                            algorithm, algorithmGrid, startPos, targetPos,
+                            _suiteTestId, currentDensity, measurement));
+
+                        if (measurement.Cancelled || _stopBenchmarkRequested)
+                            yield break;
+
+                        BenchmarkMetrics metrics = measurement.Metrics;
                         ApplyTestCaseMetadata(metrics, tc);
 
                         if (monitorCPUTemperature)
@@ -831,22 +1131,19 @@ namespace Pathfinding.Visualization
 
                         writer.WriteLine(metrics.ToCsvRow());
                         _rowsSinceFlush++;
-
-                        if (_rowsSinceFlush >= headlessRowsPerFlush)
-                        {
-                            writer.Flush();
-                            _rowsSinceFlush = 0;
-                            yield return null;
-                        }
                     }
 
                     _suiteTestId++;
-                    if (_suiteTestId % HeadlessProgressInterval == 0)
+                    // Granica transakcji obejmuje małą paczkę kompletnych TestID. Awaria
+                    // może cofnąć najwyżej tę paczkę; wznowienie obetnie ją i policzy ponownie.
+                    if (_suiteTestId % FullSuiteCheckpointInterval == 0)
                     {
                         writer.Flush();
-                        Debug.Log($"[Visualizer] Postęp pełnego benchmarku: {FormatProgress(_suiteTestId, estimatedTotalTestCases, "testów")}");
-                        yield return null;
+                        _rowsSinceFlush = 0;
+                        WriteFullSuiteCheckpoint(
+                            checkpointPath, suiteFingerprint, _suiteTestId);
                     }
+
                 }
             }
         }
@@ -859,7 +1156,6 @@ namespace Pathfinding.Visualization
             if (scenario == ScenarioType.DS1_MovingObstacles)
             {
                 _ds1Manager = CreateDS1ManagerForCurrentTest(_gridMap, startPos, targetPos, testId);
-                _ds1Manager.StepAll(_gridMap);
                 _ds1Manager.VerifyObstaclePositions(_gridMap);
                 return;
             }
@@ -878,70 +1174,170 @@ namespace Pathfinding.Visualization
         private MovingObstacleManager CreateDS1ManagerForCurrentTest(
             GridMap grid, Vector2Int startPos, Vector2Int targetPos, int testId)
         {
-            int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId;
+            if (_cachedDS1ReferenceTestId == testId &&
+                _cachedDS1ReferenceStart == startPos &&
+                _cachedDS1ReferenceTarget == targetPos &&
+                _cachedDS1ReferenceMapSeed == _activeMapSeed &&
+                _cachedDS1ReferenceMapWidth == grid.Width &&
+                _cachedDS1ReferenceMapHeight == grid.Height &&
+                _cachedDS1InitialManager != null)
+                return _cachedDS1InitialManager.CloneInitialForGrid(grid);
+
+            int seed = GetStableScenarioSeed(startPos, targetPos, 1000);
             var manager = new MovingObstacleManager(seed);
-            manager.GenerateObstacles(grid, movingObstacleCount, startPos, targetPos, patrolLength);
+            List<Vector2Int> referencePath;
+            if (_cachedDS1ReferenceTestId == testId &&
+                _cachedDS1ReferenceStart == startPos &&
+                _cachedDS1ReferenceTarget == targetPos &&
+                _cachedDS1ReferenceMapSeed == _activeMapSeed &&
+                _cachedDS1ReferenceMapWidth == grid.Width &&
+                _cachedDS1ReferenceMapHeight == grid.Height &&
+                _cachedDS1ReferencePath != null)
+            {
+                referencePath = _cachedDS1ReferencePath;
+            }
+            else
+            {
+                TestPointSelector.TryGetShortestPath(grid, startPos, targetPos,
+                    out referencePath, out _);
+                _cachedDS1ReferenceTestId = testId;
+                _cachedDS1ReferenceStart = startPos;
+                _cachedDS1ReferenceTarget = targetPos;
+                _cachedDS1ReferenceMapSeed = _activeMapSeed;
+                _cachedDS1ReferenceMapWidth = grid.Width;
+                _cachedDS1ReferenceMapHeight = grid.Height;
+                _cachedDS1ReferencePath = referencePath;
+            }
+            int adaptiveObstacleCount = Mathf.Clamp(
+                Mathf.Max(movingObstacleCount, Mathf.CeilToInt(referencePath.Count / 12f)),
+                1, 64);
+            manager.GenerateObstacles(grid, adaptiveObstacleCount, startPos, targetPos,
+                patrolLength, ShouldLogDetailedBenchmark, referencePath);
+            // Cache musi pozostać nieruchomym szablonem. Zwracany manager jest
+            // modyfikowany przez pierwszą iterację symulacji.
+            _cachedDS1InitialManager = manager.CloneInitial();
             return manager;
         }
 
         private DS2DynamicState CreateDS2DynamicState(
-            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos, int testId)
+            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos)
         {
-            int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId + 4000;
-            var rng = new System.Random(seed);
-            return new DS2DynamicState(BuildDS2ObstructionSchedule(baseGrid, startPos, targetPos, rng));
+            return new DS2DynamicState(
+                BuildDS2ObstructionSchedule(baseGrid, startPos, targetPos));
         }
 
         private int GetDS2ObstructionLimit()
         {
-            return Mathf.Max(12, pathObstructionChanges);
+            return Mathf.Max(1, pathObstructionChanges);
         }
 
-        private List<List<Vector2Int>> BuildDS2ObstructionSchedule(
-            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos, System.Random rng)
+        private List<DS2ObstructionEvent> BuildDS2ObstructionSchedule(
+            GridMap baseGrid, Vector2Int startPos, Vector2Int targetPos)
         {
             int obstructionLimit = GetDS2ObstructionLimit();
-            int clusterSize = Mathf.Clamp(obstructionLimit / 4, 2, 4);
-            int eventCount = Mathf.Max(1, Mathf.CeilToInt(obstructionLimit / (float)clusterSize));
-            var schedule = new List<List<Vector2Int>>(eventCount);
-            var candidates = BuildDS2EuclideanCorridorCandidates(baseGrid, startPos, targetPos);
-            var used = new HashSet<Vector2Int>();
+            int spacing = Mathf.Max(1, pathObstructionSpacing);
+            int lookahead = Mathf.Clamp(spacing / 2, 2, 4);
+            var schedule = new List<DS2ObstructionEvent>(obstructionLimit);
 
-            ShuffleList(candidates, rng);
+            if (!TestPointSelector.TryGetShortestPath(baseGrid, startPos, targetPos,
+                    out List<Vector2Int> referencePath, out _))
+                return schedule;
 
-            for (int eventIndex = 0; eventIndex < eventCount && used.Count < obstructionLimit; eventIndex++)
+            // Liczba zdarzeń rośnie wraz z długością trasy. Limit z Inspectora
+            // pozostaje wyłącznie bezpiecznikiem dla bardzo dużych map.
+            int adaptiveEventCount = Mathf.Max(0,
+                Mathf.FloorToInt((referencePath.Count - lookahead - 1) / (float)spacing));
+            int targetEventCount = Mathf.Min(obstructionLimit, adaptiveEventCount);
+            if (targetEventCount == 0)
+                return schedule;
+
+            GridMap planningGrid = baseGrid.Clone();
+            Vector2Int oraclePosition = startPos;
+            int oracleStep = 0;
+            int nextTriggerStep = spacing;
+            int virtualStepLimit = Mathf.Max(
+                referencePath.Count * 3,
+                (targetEventCount + 1) * spacing);
+
+            while (schedule.Count < targetEventCount &&
+                   oraclePosition != targetPos && oracleStep < virtualStepLimit)
             {
-                float targetProgress = (eventIndex + 1f) / (eventCount + 1f);
-                Vector2Int anchor;
-                if (!TryPickDS2Candidate(candidates, used, startPos, targetPos, targetProgress, out anchor))
+                if (!TestPointSelector.TryGetShortestPath(
+                        planningGrid, oraclePosition, targetPos,
+                        out List<Vector2Int> oraclePath, out _))
                     break;
 
-                var eventCells = new List<Vector2Int>();
-                AddDS2ScheduledCell(anchor, used, eventCells, obstructionLimit);
+                int stepsToTrigger = nextTriggerStep - oracleStep;
+                if (stepsToTrigger <= 0)
+                    stepsToTrigger = spacing;
 
-                var nearby = new List<Vector2Int>();
-                foreach (Vector2Int candidate in candidates)
+                int advance = Mathf.Min(stepsToTrigger, oraclePath.Count);
+                if (advance <= 0)
+                    break;
+
+                oraclePosition = oraclePath[advance - 1];
+                oracleStep += advance;
+                if (advance < stepsToTrigger || oraclePosition == targetPos)
+                    break;
+
+                if (!TestPointSelector.TryGetShortestPath(
+                        planningGrid, oraclePosition, targetPos,
+                        out oraclePath, out _))
+                    break;
+
+                if (!TrySelectReachableDS2Block(
+                        planningGrid, oraclePosition, targetPos, oraclePath,
+                        lookahead, spacing, out Vector2Int blockedCell))
                 {
-                    if (used.Contains(candidate))
-                        continue;
-
-                    if (Math.Abs(candidate.x - anchor.x) <= 2 && Math.Abs(candidate.y - anchor.y) <= 2)
-                        nearby.Add(candidate);
+                    nextTriggerStep += spacing;
+                    continue;
                 }
 
-                ShuffleList(nearby, rng);
-                foreach (Vector2Int candidate in nearby)
-                {
-                    if (eventCells.Count >= clusterSize || used.Count >= obstructionLimit)
-                        break;
-
-                    AddDS2ScheduledCell(candidate, used, eventCells, obstructionLimit);
-                }
-
-                schedule.Add(eventCells);
+                planningGrid.SetWalkable(blockedCell, false);
+                schedule.Add(new DS2ObstructionEvent(
+                    nextTriggerStep, new List<Vector2Int> { blockedCell }));
+                nextTriggerStep += spacing;
             }
 
             return schedule;
+        }
+
+        private bool TrySelectReachableDS2Block(
+            GridMap planningGrid,
+            Vector2Int oraclePosition,
+            Vector2Int targetPos,
+            List<Vector2Int> oraclePath,
+            int lookahead,
+            int searchWindow,
+            out Vector2Int blockedCell)
+        {
+            blockedCell = default;
+            if (oraclePath == null || oraclePath.Count <= lookahead)
+                return false;
+
+            int firstIndex = lookahead - 1;
+            int lastIndex = Mathf.Min(
+                oraclePath.Count - 2,
+                firstIndex + Mathf.Max(1, searchWindow) - 1);
+
+            for (int i = firstIndex; i <= lastIndex; i++)
+            {
+                Vector2Int candidate = oraclePath[i];
+                if (IsProtectedPoint(candidate, oraclePosition, targetPos) ||
+                    !planningGrid.IsWalkable(candidate))
+                    continue;
+
+                GridMap trialGrid = planningGrid.Clone();
+                trialGrid.SetWalkable(candidate, false);
+                if (!TestPointSelector.TryGetShortestPathLength(
+                        trialGrid, oraclePosition, targetPos, out _))
+                    continue;
+
+                blockedCell = candidate;
+                return true;
+            }
+
+            return false;
         }
 
         private List<Vector2Int> BuildDS2EuclideanCorridorCandidates(
@@ -1043,12 +1439,11 @@ namespace Pathfinding.Visualization
             DS2DynamicState state)
         {
             var changes = new List<Vector2Int>();
-            int spacing = Mathf.Max(1, pathObstructionSpacing);
 
             while (state.NextEventIndex < state.Schedule.Count &&
-                   agentStep >= (state.NextEventIndex + 1) * spacing)
+                   agentStep >= state.Schedule[state.NextEventIndex].TriggerStep)
             {
-                foreach (Vector2Int pos in state.Schedule[state.NextEventIndex])
+                foreach (Vector2Int pos in state.Schedule[state.NextEventIndex].Cells)
                 {
                     if (pos == currentPos || !grid.IsWalkable(pos) || state.BlockedCells.Contains(pos))
                         continue;
@@ -1158,10 +1553,28 @@ namespace Pathfinding.Visualization
             changes.Add(pos);
         }
 
-        private DS3EscapingTargetState CreateDS3EscapingTargetState(Vector2Int targetPos, int testId)
+        private DS3EscapingTargetState CreateDS3EscapingTargetState(
+            Vector2Int startPos, Vector2Int targetPos, int testId)
         {
-            int seed = (runFullBenchmarkSuite ? _activeMapSeed : randomSeed) + testId + 8000;
-            return new DS3EscapingTargetState(targetPos, seed);
+            int seed = GetStableScenarioSeed(startPos, targetPos, 8000);
+            return new DS3EscapingTargetState(targetPos, startPos, seed);
+        }
+
+        private int GetStableScenarioSeed(
+            Vector2Int startPos, Vector2Int targetPos, int scenarioOffset)
+        {
+            int baseSeed = runFullBenchmarkSuite ? _activeMapSeed : randomSeed;
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + baseSeed;
+                hash = hash * 31 + startPos.x;
+                hash = hash * 31 + startPos.y;
+                hash = hash * 31 + targetPos.x;
+                hash = hash * 31 + targetPos.y;
+                hash = hash * 31 + scenarioOffset;
+                return hash;
+            }
         }
 
         private static readonly Vector2Int[] DS3EscapeDirections =
@@ -1178,12 +1591,12 @@ namespace Pathfinding.Visualization
 
         /// <summary>
         /// Co 2 kroki agenta, punkt końcowy ucieka o 1 pole w losowym kierunku.
-        /// Kierunek nie może skracać drogi w obu osiach jednocześnie.
+        /// Kierunek nie może zbliżać celu do stałego punktu startowego testu.
+        /// Dzięki temu trajektoria celu jest identyczna dla wszystkich algorytmów.
         /// Zwraca true jeśli cel się przesunął.
         /// </summary>
         private bool TryEscapeTarget(
             GridMap grid,
-            Vector2Int agentPos,
             DS3EscapingTargetState state)
         {
             if (state.TotalEscapes >= maxTargetEscapes)
@@ -1202,25 +1615,15 @@ namespace Pathfinding.Visualization
                 Vector2Int candidate = state.CurrentTarget + dir;
                 if (!grid.IsValidCoordinate(candidate.x, candidate.y))
                     continue;
-                if (!grid.IsWalkable(candidate))
+                if (!CanMoveOnCurrentGrid(grid, state.CurrentTarget, candidate))
                     continue;
 
-                // Nowa pozycja NIE może skracać drogi w obu osiach naraz
-                int oldDx = Math.Abs(state.CurrentTarget.x - agentPos.x);
-                int oldDy = Math.Abs(state.CurrentTarget.y - agentPos.y);
-                int newDx = Math.Abs(candidate.x - agentPos.x);
-                int newDy = Math.Abs(candidate.y - agentPos.y);
+                float oldDistance = TestPointSelector.CalculateOctagonalDistance(
+                    state.EscapeAnchor, state.CurrentTarget);
+                float newDistance = TestPointSelector.CalculateOctagonalDistance(
+                    state.EscapeAnchor, candidate);
 
-                bool shorterX = newDx < oldDx;
-                bool shorterY = newDy < oldDy;
-                bool longerX = newDx > oldDx;
-                bool longerY = newDy > oldDy;
-
-                // Jeśli ucieczka skraca dystans w jednej osi, to MUSI wydłużać w drugiej.
-                // Inaczej cel po prostu zbliżałby się do agenta.
-                if (shorterX && !longerY)
-                    continue;
-                if (shorterY && !longerX)
+                if (newDistance + 0.0001f < oldDistance)
                     continue;
 
                 validDirs.Add(dir);
@@ -1332,7 +1735,6 @@ namespace Pathfinding.Visualization
             MovingObstacleManager visualManager = CreateDS1ManagerForCurrentTest(
                 visualGrid, startPos, targetPos, testId);
             _ds1Manager = visualManager;
-            visualManager.StepAll(visualGrid);
             visualManager.VerifyObstaclePositions(visualGrid);
 
             _gridMap = visualGrid;
@@ -1347,16 +1749,33 @@ namespace Pathfinding.Visualization
             Vector2Int currentPos = startPos;
             Pathfinding.Core.PathfindingResult currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
             int replanCount = 0;
-            int safetyLimit = visualGrid.Width * visualGrid.Height * 2;
+            int consecutiveFailedReplans = 0;
+            int safetyLimit = GetDynamicTickLimit(
+                visualGrid, startPos, targetPos, testId);
 
-            while (currentPos != targetPos && safetyLimit-- > 0)
+            while (currentPos != targetPos && safetyLimit > 0)
             {
                 yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, true));
 
                 if (currentResult == null || !currentResult.PathFound || currentResult.Path == null || currentResult.Path.Count == 0)
                 {
-                    Debug.LogWarning($"[Visualizer][DS1] {algorithm.AlgorithmName}: brak dalszej drogi po {replanCount} rekalkulacjach.");
-                    break;
+                    if (replanCount >= Mathf.Max(1, maxDS1Replans) ||
+                        consecutiveFailedReplans >= Mathf.Max(1, maxDS1ConsecutiveFailedReplans))
+                        break;
+
+                    List<(Vector2Int oldPos, Vector2Int newPos)> waitMoves =
+                        visualManager.StepAll(visualGrid, currentPos);
+                    safetyLimit--;
+                    yield return StartCoroutine(AnimateDS1Obstacles(waitMoves));
+                    replanCount++;
+                    currentResult = FindPathForVisualization(
+                        algorithm, visualGrid, currentPos, targetPos);
+                    if (currentResult == null || !currentResult.PathFound ||
+                        currentResult.Path == null || currentResult.Path.Count == 0)
+                        consecutiveFailedReplans++;
+                    else
+                        consecutiveFailedReplans = 0;
+                    continue;
                 }
 
                 bool replanned = false;
@@ -1364,7 +1783,9 @@ namespace Pathfinding.Visualization
                 {
                     Vector2Int nextPos = currentResult.Path[i];
 
-                    List<(Vector2Int oldPos, Vector2Int newPos)> moves = visualManager.StepAll(visualGrid);
+                    List<(Vector2Int oldPos, Vector2Int newPos)> moves =
+                        visualManager.StepAll(visualGrid, currentPos);
+                    safetyLimit--;
                     visualManager.VerifyObstaclePositions(visualGrid);
                     yield return StartCoroutine(AnimateDS1Obstacles(moves));
 
@@ -1374,6 +1795,12 @@ namespace Pathfinding.Visualization
 
                     if (!CanMoveOnCurrentGrid(visualGrid, currentPos, nextPos))
                     {
+                        if (replanCount >= Mathf.Max(1, maxDS1Replans))
+                        {
+                            safetyLimit = 0;
+                            break;
+                        }
+
                         replanCount++;
                         if (_basemapRenderers != null)
                         {
@@ -1384,13 +1811,46 @@ namespace Pathfinding.Visualization
                         }
                         Debug.Log($"[Visualizer][DS1] {algorithm.AlgorithmName}: rekalkulacja #{replanCount}, zablokowany krok {nextPos}.");
                         currentResult = FindPathForVisualization(algorithm, visualGrid, currentPos, targetPos);
+                        if (currentResult == null || !currentResult.PathFound ||
+                            currentResult.Path == null || currentResult.Path.Count == 0)
+                        {
+                            consecutiveFailedReplans++;
+                            if (consecutiveFailedReplans >=
+                                Mathf.Max(1, maxDS1ConsecutiveFailedReplans))
+                                safetyLimit = 0;
+                        }
+                        else
+                        {
+                            consecutiveFailedReplans = 0;
+                        }
                         replanned = true;
+
+                        // Najpierw pokazujemy zatrzymanie i nową trasę. Dopiero potem
+                        // agent wykonuje pierwszy krok replanu, który może prowadzić
+                        // z powrotem, jeśli jest to najkrótsze legalne obejście.
                         yield return new WaitForSeconds(replanPauseDuration);
+
+                        // Replan odbywa się po ruchu środowiska, więc agent może
+                        // wykonać pierwszy krok nowej trasy jeszcze w tym samym ticku.
+                        if (currentResult != null && currentResult.PathFound &&
+                            currentResult.Path != null && currentResult.Path.Count > 0)
+                        {
+                            Vector2Int replannedNext = currentResult.Path[0];
+                            if (CanMoveOnCurrentGrid(visualGrid, currentPos, replannedNext))
+                            {
+                                yield return StartCoroutine(MoveAgentTo(replannedNext));
+                                currentPos = replannedNext;
+                                consecutiveFailedReplans = 0;
+                                currentResult.Path.RemoveAt(0);
+                            }
+                        }
+
                         break;
                     }
 
                     yield return StartCoroutine(MoveAgentTo(nextPos));
                     currentPos = nextPos;
+                    consecutiveFailedReplans = 0;
 
                     if (_basemapRenderers != null && currentPos != targetPos)
                         _basemapRenderers[currentPos.x, currentPos.y].color = colorPath;
@@ -1416,7 +1876,7 @@ namespace Pathfinding.Visualization
             _isVisualizing = true;
 
             GridMap visualGrid = _originalGridMap.Clone();
-            DS2DynamicState ds2State = CreateDS2DynamicState(visualGrid, startPos, targetPos, testId);
+            DS2DynamicState ds2State = CreateDS2DynamicState(visualGrid, startPos, targetPos);
             _gridMap = visualGrid;
             RefreshBasemapColors();
 
@@ -1454,6 +1914,8 @@ namespace Pathfinding.Visualization
                     yield return StartCoroutine(PaintPathfindingOverlay(currentResult, startPos, targetPos, false));
                     ShowChangeMarkers(changes);
 
+                    // DS2 modeluje lokalne wykrycie kolizji: wcześniejsza blokada
+                    // dalszego fragmentu trasy nie wyzwala jeszcze rekalkulacji.
                     if (!CanMoveOnCurrentGrid(visualGrid, currentPos, nextPos))
                     {
                         replanCount++;
@@ -1500,7 +1962,8 @@ namespace Pathfinding.Visualization
             _isVisualizing = true;
 
             GridMap visualGrid = _originalGridMap.Clone();
-            DS3EscapingTargetState escapeState = CreateDS3EscapingTargetState(targetPos, testId);
+            DS3EscapingTargetState escapeState = CreateDS3EscapingTargetState(
+                startPos, targetPos, testId);
             _gridMap = visualGrid;
             RefreshBasemapColors();
 
@@ -1551,7 +2014,7 @@ namespace Pathfinding.Visualization
                         break;
 
                     // Co 2 kroki agenta — cel ucieka
-                    bool escaped = TryEscapeTarget(visualGrid, currentPos, escapeState);
+                    bool escaped = TryEscapeTarget(visualGrid, escapeState);
                     if (escaped)
                     {
                         replanCount++;
@@ -1685,19 +2148,15 @@ namespace Pathfinding.Visualization
                     PathfindingRuntimeOptions.RecordExploredNodesHistory = ShouldVisualize && iter == 0;
 
                     // GC.Collect() TYLKO przed cold start — nie blokuj silnika w warm iterations
-                    long gcBefore;
-                    if (iter == 0 && forceGcBeforeColdStart)
-                        gcBefore = HardwareMonitor.ForceGCAndGetMemory();
-                    else
-                        gcBefore = GC.GetTotalMemory(false);
+                    long gcBefore = BeginAllocationMeasurement(
+                        iter == 0 && forceGcBeforeColdStart);
 
-                    Pathfinding.Core.PathfindingResult result = algorithm.FindPath(grid, startPos, targetPos);
+                    Pathfinding.Core.PathfindingResult result =
+                        algorithm.FindPath(grid, startPos, targetPos);
 
-                    long gcAfter = GC.GetTotalMemory(false);
+                    long gcAfter = GC.GetAllocatedBytesForCurrentThread();
                     result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
-
-                    if (result.PathFound)
-                        result.CalculateSmoothnessMetrics();
+                    CalculateReportedPathMetrics(result, startPos, iter == 0);
 
                     allResults.Add(result);
                 }
@@ -1752,18 +2211,15 @@ namespace Pathfinding.Visualization
                 {
                     PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
 
-                    long gcBefore = iter == 0 && forceGcBeforeColdStart
-                        ? HardwareMonitor.ForceGCAndGetMemory()
-                        : GC.GetTotalMemory(false);
+                    long gcBefore = BeginAllocationMeasurement(
+                        iter == 0 && forceGcBeforeColdStart);
 
                     Pathfinding.Core.PathfindingResult result =
                         RunDS1DynamicSimulation(algorithm, startPos, targetPos, testId);
 
-                    long gcAfter = GC.GetTotalMemory(false);
+                    long gcAfter = GC.GetAllocatedBytesForCurrentThread();
                     result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
-
-                    if (result.PathFound)
-                        result.CalculateSmoothnessMetrics();
+                    CalculateReportedPathMetrics(result, startPos, iter == 0);
 
                     allResults.Add(result);
                 }
@@ -1774,6 +2230,8 @@ namespace Pathfinding.Visualization
             }
 
             visualResult = allResults.Count > 0 ? allResults[0] : null;
+            EnsureDeterministicLogicalResults(
+                allResults, "DS1_MovingObstacles", algorithm.AlgorithmName, testId);
             metrics = new BenchmarkMetrics
             {
                 AlgorithmName = algorithm.AlgorithmName,
@@ -1801,8 +2259,6 @@ namespace Pathfinding.Visualization
             GridMap simulationGrid = _originalGridMap.Clone();
             MovingObstacleManager simulationManager = CreateDS1ManagerForCurrentTest(
                 simulationGrid, startPos, targetPos, testId);
-            simulationManager.StepAll(simulationGrid);
-            simulationManager.VerifyObstaclePositions(simulationGrid);
 
             var combinedResult = new Pathfinding.Core.PathfindingResult
             {
@@ -1811,50 +2267,59 @@ namespace Pathfinding.Visualization
             };
 
             Vector2Int currentPos = startPos;
-            int safetyLimit = simulationGrid.Width * simulationGrid.Height * 2;
+            int tickLimit = GetDynamicTickLimit(
+                simulationGrid, startPos, targetPos, testId);
+            int ticks = 0;
+            Pathfinding.Core.PathfindingResult currentPlan =
+                algorithm.FindPath(simulationGrid, currentPos, targetPos);
+            AccumulateSearchMetrics(combinedResult, currentPlan);
+            int pathIndex = 0;
+            int consecutiveFailedReplans = 0;
 
-            while (currentPos != targetPos && safetyLimit-- > 0)
+            while (currentPos != targetPos && ticks++ < tickLimit)
             {
-                Pathfinding.Core.PathfindingResult currentPlan =
-                    algorithm.FindPath(simulationGrid, currentPos, targetPos);
+                // Jednoznaczny tick DS1: najpierw ruch środowiska, następnie
+                // obserwacja/replan i natychmiastowa akcja agenta.
+                simulationManager.StepAllWithoutTracking(simulationGrid, currentPos);
 
-                AccumulateSearchMetrics(combinedResult, currentPlan);
+                bool planUsable = currentPlan != null && currentPlan.PathFound &&
+                                  currentPlan.Path != null && pathIndex < currentPlan.Path.Count &&
+                                  CanMoveOnCurrentGrid(simulationGrid, currentPos, currentPlan.Path[pathIndex]);
 
-                if (!currentPlan.PathFound || currentPlan.Path == null || currentPlan.Path.Count == 0)
-                    return combinedResult;
-
-                bool needsReplan = false;
-                for (int pathIndex = 0; pathIndex < currentPlan.Path.Count && currentPos != targetPos; pathIndex++)
+                if (!planUsable)
                 {
-                    Vector2Int nextPos = currentPlan.Path[pathIndex];
-
-                    simulationManager.StepAll(simulationGrid);
-                    simulationManager.VerifyObstaclePositions(simulationGrid);
-
-                    if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
-                    {
-                        needsReplan = true;
-                        combinedResult.PathRecalculations++;
+                    if (combinedResult.PathRecalculations >= Mathf.Max(1, maxDS1Replans))
                         break;
-                    }
 
-                    Vector2Int previousPos = currentPos;
-                    currentPos = nextPos;
-                    combinedResult.Path.Add(currentPos);
-                    combinedResult.PathLength += GetStepLength(currentPos, previousPos);
+                    combinedResult.PathRecalculations++;
+                    currentPlan = algorithm.FindPath(simulationGrid, currentPos, targetPos);
+                    AccumulateSearchMetrics(combinedResult, currentPlan);
+                    pathIndex = 0;
 
-                    if (currentPos == targetPos)
+                    // Chwilowy brak drogi w DS1 oznacza wait, nie trwałą porażkę.
+                    if (currentPlan == null || !currentPlan.PathFound ||
+                        currentPlan.Path == null || currentPlan.Path.Count == 0)
                     {
-                        combinedResult.PathFound = true;
-                        return combinedResult;
+                        consecutiveFailedReplans++;
+                        if (consecutiveFailedReplans >=
+                            Mathf.Max(1, maxDS1ConsecutiveFailedReplans))
+                            break;
+                        continue;
                     }
 
-                    if (--safetyLimit <= 0)
-                        return combinedResult;
+                    consecutiveFailedReplans = 0;
                 }
 
-                if (!needsReplan && currentPos != targetPos)
+                Vector2Int nextPos = currentPlan.Path[pathIndex];
+                if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
                     continue;
+
+                Vector2Int previousPos = currentPos;
+                currentPos = nextPos;
+                consecutiveFailedReplans = 0;
+                pathIndex++;
+                combinedResult.Path.Add(currentPos);
+                combinedResult.PathLength += GetStepLength(currentPos, previousPos);
             }
 
             combinedResult.PathFound = currentPos == targetPos;
@@ -1876,18 +2341,15 @@ namespace Pathfinding.Visualization
                 {
                     PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
 
-                    long gcBefore = iter == 0 && forceGcBeforeColdStart
-                        ? HardwareMonitor.ForceGCAndGetMemory()
-                        : GC.GetTotalMemory(false);
+                    long gcBefore = BeginAllocationMeasurement(
+                        iter == 0 && forceGcBeforeColdStart);
 
                     Pathfinding.Core.PathfindingResult result =
                         RunDS2DynamicSimulation(algorithm, startPos, targetPos, testId);
 
-                    long gcAfter = GC.GetTotalMemory(false);
+                    long gcAfter = GC.GetAllocatedBytesForCurrentThread();
                     result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
-
-                    if (result.PathFound)
-                        result.CalculateSmoothnessMetrics();
+                    CalculateReportedPathMetrics(result, startPos, iter == 0);
 
                     allResults.Add(result);
                 }
@@ -1898,6 +2360,8 @@ namespace Pathfinding.Visualization
             }
 
             visualResult = allResults.Count > 0 ? allResults[0] : null;
+            EnsureDeterministicLogicalResults(
+                allResults, "DS2_PathObstruction", algorithm.AlgorithmName, testId);
             metrics = new BenchmarkMetrics
             {
                 AlgorithmName = algorithm.AlgorithmName,
@@ -1923,7 +2387,7 @@ namespace Pathfinding.Visualization
             int testId)
         {
             GridMap simulationGrid = _originalGridMap.Clone();
-            DS2DynamicState ds2State = CreateDS2DynamicState(simulationGrid, startPos, targetPos, testId);
+            DS2DynamicState ds2State = CreateDS2DynamicState(simulationGrid, startPos, targetPos);
 
             var combinedResult = new Pathfinding.Core.PathfindingResult
             {
@@ -1933,49 +2397,50 @@ namespace Pathfinding.Visualization
 
             Vector2Int currentPos = startPos;
             int ds2Step = 0;
-            int safetyLimit = simulationGrid.Width * simulationGrid.Height * 2;
+            int tickLimit = GetDynamicTickLimit(
+                simulationGrid, startPos, targetPos, testId);
+            Pathfinding.Core.PathfindingResult currentPlan =
+                algorithm.FindPath(simulationGrid, currentPos, targetPos);
+            AccumulateSearchMetrics(combinedResult, currentPlan);
+            if (!currentPlan.PathFound || currentPlan.Path == null || currentPlan.Path.Count == 0)
+                return combinedResult;
 
-            while (currentPos != targetPos && safetyLimit-- > 0)
+            int pathIndex = 0;
+            while (currentPos != targetPos && ds2Step < tickLimit)
             {
-                Pathfinding.Core.PathfindingResult currentPlan =
-                    algorithm.FindPath(simulationGrid, currentPos, targetPos);
+                List<Vector2Int> changes = ApplyDS2ScheduledObstructions(
+                    simulationGrid, ds2Step, currentPos, ds2State);
 
-                AccumulateSearchMetrics(combinedResult, currentPlan);
-
-                if (!currentPlan.PathFound || currentPlan.Path == null || currentPlan.Path.Count == 0)
-                    return combinedResult;
-
-                bool needsReplan = false;
-                for (int pathIndex = 0; pathIndex < currentPlan.Path.Count && currentPos != targetPos; pathIndex++)
+                if (pathIndex >= currentPlan.Path.Count)
                 {
-                    Vector2Int nextPos = currentPlan.Path[pathIndex];
-                    ApplyDS2ScheduledObstructions(simulationGrid, ds2Step, currentPos, ds2State);
+                    combinedResult.PathRecalculations++;
+                    currentPlan = algorithm.FindPath(simulationGrid, currentPos, targetPos);
+                    AccumulateSearchMetrics(combinedResult, currentPlan);
+                    pathIndex = 0;
 
-                    if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
-                    {
-                        needsReplan = true;
-                        combinedResult.PathRecalculations++;
-                        break;
-                    }
-
-                    Vector2Int previousPos = currentPos;
-                    currentPos = nextPos;
-                    ds2Step++;
-                    combinedResult.Path.Add(currentPos);
-                    combinedResult.PathLength += GetStepLength(currentPos, previousPos);
-
-                    if (currentPos == targetPos)
-                    {
-                        combinedResult.PathFound = true;
-                        return combinedResult;
-                    }
-
-                    if (--safetyLimit <= 0)
+                    // DS2 tylko dodaje trwałe blokady, więc brak drogi jest końcowy.
+                    if (!currentPlan.PathFound || currentPlan.Path == null || currentPlan.Path.Count == 0)
                         return combinedResult;
                 }
 
-                if (!needsReplan && currentPos != targetPos)
-                    continue;
+                Vector2Int nextPos = currentPlan.Path[pathIndex];
+                if (!CanMoveOnCurrentGrid(simulationGrid, currentPos, nextPos))
+                {
+                    combinedResult.PathRecalculations++;
+                    currentPlan = algorithm.FindPath(simulationGrid, currentPos, targetPos);
+                    AccumulateSearchMetrics(combinedResult, currentPlan);
+                    pathIndex = 0;
+                    if (!currentPlan.PathFound || currentPlan.Path == null || currentPlan.Path.Count == 0)
+                        return combinedResult;
+                    nextPos = currentPlan.Path[0];
+                }
+
+                Vector2Int previousPos = currentPos;
+                currentPos = nextPos;
+                pathIndex++;
+                ds2Step++;
+                combinedResult.Path.Add(currentPos);
+                combinedResult.PathLength += GetStepLength(currentPos, previousPos);
             }
 
             combinedResult.PathFound = currentPos == targetPos;
@@ -1997,18 +2462,15 @@ namespace Pathfinding.Visualization
                 {
                     PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
 
-                    long gcBefore = iter == 0 && forceGcBeforeColdStart
-                        ? HardwareMonitor.ForceGCAndGetMemory()
-                        : GC.GetTotalMemory(false);
+                    long gcBefore = BeginAllocationMeasurement(
+                        iter == 0 && forceGcBeforeColdStart);
 
                     Pathfinding.Core.PathfindingResult result =
                         RunDS3DynamicSimulation(algorithm, startPos, targetPos, testId);
 
-                    long gcAfter = GC.GetTotalMemory(false);
+                    long gcAfter = GC.GetAllocatedBytesForCurrentThread();
                     result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
-
-                    if (result.PathFound)
-                        result.CalculateSmoothnessMetrics();
+                    CalculateReportedPathMetrics(result, startPos, iter == 0);
 
                     allResults.Add(result);
                 }
@@ -2019,6 +2481,8 @@ namespace Pathfinding.Visualization
             }
 
             visualResult = allResults.Count > 0 ? allResults[0] : null;
+            EnsureDeterministicLogicalResults(
+                allResults, "DS3_EscapingTarget", algorithm.AlgorithmName, testId);
             metrics = new BenchmarkMetrics
             {
                 AlgorithmName = algorithm.AlgorithmName,
@@ -2044,7 +2508,8 @@ namespace Pathfinding.Visualization
             int testId)
         {
             GridMap simulationGrid = _originalGridMap.Clone();
-            DS3EscapingTargetState escapeState = CreateDS3EscapingTargetState(targetPos, testId);
+            DS3EscapingTargetState escapeState = CreateDS3EscapingTargetState(
+                startPos, targetPos, testId);
 
             var combinedResult = new Pathfinding.Core.PathfindingResult
             {
@@ -2089,7 +2554,7 @@ namespace Pathfinding.Visualization
                     }
 
                     // Co 2 kroki agenta — cel ucieka
-                    bool escaped = TryEscapeTarget(simulationGrid, currentPos, escapeState);
+                    bool escaped = TryEscapeTarget(simulationGrid, escapeState);
                     if (escaped)
                     {
                         needsReplan = true;
@@ -2122,6 +2587,50 @@ namespace Pathfinding.Visualization
             total.JumpScannedCells += partial.JumpScannedCells;
         }
 
+        private void EnsureDeterministicLogicalResults(
+            List<Pathfinding.Core.PathfindingResult> results,
+            string scenarioName,
+            string algorithmName,
+            int testId)
+        {
+            if (results == null || results.Count < 2)
+                return;
+
+            Pathfinding.Core.PathfindingResult expected = results[0];
+            for (int run = 1; run < results.Count; run++)
+            {
+                Pathfinding.Core.PathfindingResult actual = results[run];
+                bool same = expected.PathFound == actual.PathFound &&
+                            expected.ExploredNodes == actual.ExploredNodes &&
+                            expected.JumpScannedCells == actual.JumpScannedCells &&
+                            expected.PathRecalculations == actual.PathRecalculations &&
+                            Math.Abs(expected.PathLength - actual.PathLength) <= 0.0001f &&
+                            PathsEqual(expected.Path, actual.Path);
+
+                if (!same)
+                {
+                    throw new InvalidOperationException(
+                        $"Niedeterministyczny wynik {scenarioName}/{algorithmName}, " +
+                        $"TestID={testId}, iteracja={run}. Benchmark został przerwany, " +
+                        "aby nie zapisać niespójnych danych.");
+                }
+            }
+        }
+
+        private static bool PathsEqual(List<Vector2Int> expected, List<Vector2Int> actual)
+        {
+            if (ReferenceEquals(expected, actual))
+                return true;
+            if (expected == null || actual == null || expected.Count != actual.Count)
+                return false;
+            for (int i = 0; i < expected.Count; i++)
+            {
+                if (expected[i] != actual[i])
+                    return false;
+            }
+            return true;
+        }
+
         private bool CanMoveOnCurrentGrid(GridMap grid, Vector2Int from, Vector2Int to)
         {
             int dx = to.x - from.x;
@@ -2140,6 +2649,80 @@ namespace Pathfinding.Visualization
                 return grid.IsWalkable(from.x + dx, from.y) && grid.IsWalkable(from.x, from.y + dy);
 
             return true;
+        }
+
+        private int GetDynamicTickLimit(
+            GridMap grid, Vector2Int startPos, Vector2Int targetPos, int testId)
+        {
+            if (_cachedTickLimitTestId == testId &&
+                _cachedTickLimitScenario == scenario)
+                return _cachedDynamicTickLimit;
+
+            int tickLimit;
+            if (TestPointSelector.TryGetShortestPathLength(
+                    grid, startPos, targetPos, out float referenceLength))
+            {
+                tickLimit = Mathf.Max(64, Mathf.CeilToInt(referenceLength * 8f) + 32);
+            }
+            else
+            {
+                tickLimit = Mathf.Max(64, (grid.Width + grid.Height) * 4);
+            }
+
+            _cachedTickLimitTestId = testId;
+            _cachedTickLimitScenario = scenario;
+            _cachedDynamicTickLimit = tickLimit;
+            return tickLimit;
+        }
+
+        /// <summary>
+        /// Uruchamia dokładnie tę samą symulację dynamiczną co benchmark, ale bez
+        /// pomiarów i wizualizacji. Punkt wejścia służy testom powtarzalności.
+        /// </summary>
+        public Pathfinding.Core.PathfindingResult RunDynamicSimulationForDeterminism(
+            ScenarioType scenarioType,
+            IPathfindingAlgorithm algorithm,
+            GridMap baseGrid,
+            Vector2Int startPos,
+            Vector2Int targetPos,
+            int mapSeed,
+            int testId = 0)
+        {
+            GridMap previousOriginalGrid = _originalGridMap;
+            int previousMapSeed = _activeMapSeed;
+            bool previousFullSuite = runFullBenchmarkSuite;
+            ScenarioType previousScenario = scenario;
+
+            try
+            {
+                _originalGridMap = baseGrid.Clone();
+                _activeMapSeed = mapSeed;
+                runFullBenchmarkSuite = true;
+                scenario = scenarioType;
+
+                Pathfinding.Core.PathfindingResult result = scenarioType switch
+                {
+                    ScenarioType.DS1_MovingObstacles =>
+                        RunDS1DynamicSimulation(algorithm, startPos, targetPos, testId),
+                    ScenarioType.DS2_PathObstruction =>
+                        RunDS2DynamicSimulation(algorithm, startPos, targetPos, testId),
+                    ScenarioType.DS3_EscapingTarget =>
+                        RunDS3DynamicSimulation(algorithm, startPos, targetPos, testId),
+                    _ => algorithm.FindPath(baseGrid.Clone(), startPos, targetPos)
+                };
+
+                result.CalculatePathCost(startPos);
+                if (result.PathFound)
+                    result.CalculateSmoothnessMetrics(startPos);
+                return result;
+            }
+            finally
+            {
+                _originalGridMap = previousOriginalGrid;
+                _activeMapSeed = previousMapSeed;
+                runFullBenchmarkSuite = previousFullSuite;
+                scenario = previousScenario;
+            }
         }
 
         private float GetStepLength(Vector2Int to, Vector2Int from)
@@ -2169,23 +2752,36 @@ namespace Pathfinding.Visualization
 
                     PathfindingRuntimeOptions.RecordExploredNodesHistory = false;
 
-                    long gcBefore;
-                    if (iter == 0 && forceGcBeforeColdStart)
-                        gcBefore = HardwareMonitor.ForceGCAndGetMemory();
-                    else
-                        gcBefore = GC.GetTotalMemory(false);
+                    long gcBefore = BeginAllocationMeasurement(
+                        iter == 0 && forceGcBeforeColdStart);
 
-                    Pathfinding.Core.PathfindingResult result = algorithm.FindPath(grid, startPos, targetPos);
+                    Pathfinding.Core.PathfindingResult result;
+                    switch (scenario)
+                    {
+                        case ScenarioType.DS1_MovingObstacles:
+                            result = RunDS1DynamicSimulation(algorithm, startPos, targetPos, testId);
+                            break;
+                        case ScenarioType.DS2_PathObstruction:
+                            result = RunDS2DynamicSimulation(algorithm, startPos, targetPos, testId);
+                            break;
+                        case ScenarioType.DS3_EscapingTarget:
+                            result = RunDS3DynamicSimulation(algorithm, startPos, targetPos, testId);
+                            break;
+                        default:
+                            result = algorithm.FindPath(grid, startPos, targetPos);
+                            break;
+                    }
 
-                    long gcAfter = GC.GetTotalMemory(false);
+                    long gcAfter = GC.GetAllocatedBytesForCurrentThread();
                     result.GCAllocBytes = Math.Max(0, gcAfter - gcBefore);
-
-                    if (result.PathFound)
-                        result.CalculateSmoothnessMetrics();
+                    CalculateReportedPathMetrics(result, startPos, iter == 0);
 
                     allResults.Add(result);
 
-                    if (sw.ElapsedMilliseconds > 16 && iter + 1 < benchmarkIterations)
+                    int iterationsPerYield = Mathf.Max(1, headlessIterationsPerYield);
+                    if (iter + 1 < benchmarkIterations &&
+                        ((iter + 1) % iterationsPerYield == 0 ||
+                         sw.ElapsedMilliseconds > FullSuiteMaxWorkSliceMs))
                     {
                         yield return null;
                         sw.Restart();
@@ -2198,6 +2794,12 @@ namespace Pathfinding.Visualization
             }
 
             measurement.VisualResult = allResults.Count > 0 ? allResults[0] : null;
+
+            if (scenario != ScenarioType.Static)
+            {
+                EnsureDeterministicLogicalResults(
+                    allResults, scenario.ToString(), algorithm.AlgorithmName, testId);
+            }
 
             string scenarioLabel = scenario switch
             {
@@ -2439,14 +3041,25 @@ namespace Pathfinding.Visualization
             return -1f;
         }
 
-        private static void ApplyTestCaseMetadata(BenchmarkMetrics metrics, TestCase testCase)
+        private void ApplyTestCaseMetadata(BenchmarkMetrics metrics, TestCase testCase)
         {
             metrics.DistanceBucket = string.IsNullOrWhiteSpace(testCase.distanceBucket)
                 ? "Unknown"
                 : testCase.distanceBucket;
             metrics.EuclideanDistance = testCase.euclideanDistance;
             metrics.OctagonalDistance = testCase.octagonalDistance;
-            metrics.ReferenceShortestPathLength = testCase.referenceShortestPathLength;
+            GridMap referenceGrid = _originalGridMap ?? _gridMap;
+            Vector2Int start = new Vector2Int(testCase.startX, testCase.startY);
+            Vector2Int target = new Vector2Int(testCase.targetX, testCase.targetY);
+            if (referenceGrid != null && TestPointSelector.TryGetShortestPathLength(
+                    referenceGrid, start, target, out float verifiedReferenceLength))
+            {
+                metrics.ReferenceShortestPathLength = verifiedReferenceLength;
+            }
+            else
+            {
+                metrics.ReferenceShortestPathLength = testCase.referenceShortestPathLength;
+            }
         }
 
         // ─────────────────────────────────────────────────────────

@@ -47,6 +47,12 @@ namespace Pathfinding.Core
         public float PathLength { get; set; }
 
         /// <summary>
+        /// Dyskretny koszt faktycznie przebytej ścieżki: 10 za ruch ortogonalny
+        /// i 14 za ruch diagonalny. Nie uwzględnia wag terenu.
+        /// </summary>
+        public int PathCost { get; set; }
+
+        /// <summary>
         /// Ilość cykli procesora pobrana poprzez Stopwatch.GetTimestamp() albo ElapsedTicks.
         /// Precyzyjniejsza niż milisekundy dla bardzo szybkich algorytmów.
         /// </summary>
@@ -57,8 +63,8 @@ namespace Pathfinding.Core
         // ────────────────────────────────────────────────
 
         /// <summary>
-        /// Delta alokacji pamięci GC (Garbage Collector) w bajtach.
-        /// Mierzona jako GC.GetTotalMemory() po – GC.GetTotalMemory() przed wywołaniem FindPath().
+        /// Liczba bajtów zaalokowanych na bieżącym wątku podczas pomiaru.
+        /// Mierzona jako różnica GC.GetAllocatedBytesForCurrentThread() przed i po operacji.
         /// Im mniejsza wartość, tym algorytm jest bardziej przyjazny dla GC Unity.
         /// </summary>
         public long GCAllocBytes { get; set; }
@@ -82,6 +88,28 @@ namespace Pathfinding.Core
         /// Dla scenariuszy statycznych pozostaje 0.
         /// </summary>
         public int PathRecalculations { get; set; }
+
+        /// <summary>
+        /// Oblicza dyskretny koszt 10/14 dla całej zapisanej trasy,
+        /// z uwzględnieniem pierwszego odcinka start -> Path[0].
+        /// </summary>
+        public void CalculatePathCost(Vector2Int startPosition)
+        {
+            PathCost = 0;
+            if (Path == null || Path.Count == 0)
+                return;
+
+            Vector2Int previousPosition = startPosition;
+            foreach (Vector2Int position in Path)
+            {
+                int dx = Mathf.Abs(position.x - previousPosition.x);
+                int dy = Mathf.Abs(position.y - previousPosition.y);
+                int diagonalSteps = Mathf.Min(dx, dy);
+                int straightSteps = Mathf.Max(dx, dy) - diagonalSteps;
+                PathCost += diagonalSteps * 14 + straightSteps * 10;
+                previousPosition = position;
+            }
+        }
 
         /// <summary>
         /// Oblicza metryki gładkości ścieżki na podstawie listy Path.
@@ -112,6 +140,37 @@ namespace Pathfinding.Core
             {
                 PathSmoothness = DirectionChanges / PathLength;
             }
+        }
+
+        /// <summary>
+        /// Oblicza gładkość z uwzględnieniem pierwszego odcinka start -> Path[0].
+        /// Lista Path celowo nie zawiera pola startowego, dlatego benchmark powinien
+        /// używać tego przeciążenia zamiast wariantu bez argumentu.
+        /// </summary>
+        public void CalculateSmoothnessMetrics(Vector2Int startPosition)
+        {
+            DirectionChanges = 0;
+            PathSmoothness = 0f;
+
+            if (Path == null || Path.Count == 0)
+                return;
+
+            Vector2Int previousPosition = startPosition;
+            Vector2Int previousDirection = Path[0] - previousPosition;
+            previousPosition = Path[0];
+
+            for (int i = 1; i < Path.Count; i++)
+            {
+                Vector2Int currentDirection = Path[i] - previousPosition;
+                if (currentDirection != previousDirection)
+                    DirectionChanges++;
+
+                previousDirection = currentDirection;
+                previousPosition = Path[i];
+            }
+
+            if (PathLength > 0f)
+                PathSmoothness = DirectionChanges / PathLength;
         }
     }
 }

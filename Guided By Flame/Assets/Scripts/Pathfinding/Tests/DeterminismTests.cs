@@ -6,6 +6,7 @@ using UnityEngine;
 using Pathfinding.Core;
 using Pathfinding.Algorithms;
 using Pathfinding.Benchmark;
+using Pathfinding.Visualization;
 
 namespace Pathfinding.Tests
 {
@@ -72,7 +73,10 @@ namespace Pathfinding.Tests
             // ─── Zestaw 7: Determinizm pełnej ścieżki ───
             RunFullPathDeterminismTests();
 
-            // ─── Zestaw 8: Determinizm DS3 Escaping Target ───
+            // ─── Zestaw 8: Determinizm produkcyjnych symulacji DS1 i DS2 ───
+            RunDS1DS2DynamicDeterminismTests();
+
+            // ─── Zestaw 9: Determinizm DS3 Escaping Target ───
             RunDS3EscapingTargetDeterminismTests();
 
             // ─── Podsumowanie ───
@@ -127,18 +131,21 @@ namespace Pathfinding.Tests
             // Pierwsze uruchomienie — reference
             var reference = algorithm.FindPath(map, start, target);
             if (reference.PathFound)
-                reference.CalculateSmoothnessMetrics();
+                reference.CalculateSmoothnessMetrics(start);
 
             bool allMatch = true;
             string failReason = "";
 
             for (int i = 1; i < repetitions; i++)
             {
-                // Tworzymy NOWĄ instancję algorytmu za każdym razem
-                var freshAlgo = CreateFreshAlgorithm(algorithm.AlgorithmName);
-                var result = freshAlgo.FindPath(map, start, target);
+                // Naprzemiennie sprawdzamy nową instancję oraz ponowne użycie tej
+                // samej instancji. Drugi wariant wykrywa wycieki stanu z buforów.
+                IPathfindingAlgorithm testedAlgorithm = i % 2 == 0
+                    ? CreateFreshAlgorithm(algorithm.AlgorithmName)
+                    : algorithm;
+                var result = testedAlgorithm.FindPath(map, start, target);
                 if (result.PathFound)
-                    result.CalculateSmoothnessMetrics();
+                    result.CalculateSmoothnessMetrics(start);
 
                 if (result.PathFound != reference.PathFound)
                 {
@@ -384,7 +391,7 @@ namespace Pathfinding.Tests
             {
                 var reference = algo.FindPath(map, start, target);
                 if (reference.PathFound)
-                    reference.CalculateSmoothnessMetrics();
+                    reference.CalculateSmoothnessMetrics(start);
 
                 bool allMatch = true;
                 string failReason = "";
@@ -394,12 +401,26 @@ namespace Pathfinding.Tests
                     var fresh = CreateFreshAlgorithm(algo.AlgorithmName);
                     var result = fresh.FindPath(map, start, target);
 
+                    if (result.PathFound != reference.PathFound)
+                    {
+                        allMatch = false;
+                        failReason = $"Iter {i}: PathFound={result.PathFound} vs {reference.PathFound}";
+                        break;
+                    }
+
                     if (result.ExploredNodes != reference.ExploredNodes ||
                         Math.Abs(result.PathLength - reference.PathLength) > 0.001f)
                     {
                         allMatch = false;
                         failReason = $"Iter {i}: Nodes={result.ExploredNodes} vs {reference.ExploredNodes}, " +
                                      $"Length={result.PathLength:F4} vs {reference.PathLength:F4}";
+                        break;
+                    }
+
+                    if (!VectorSequencesMatch(reference.Path, result.Path, "WeightedPath", out failReason))
+                    {
+                        allMatch = false;
+                        failReason = $"Iter {i}: {failReason}";
                         break;
                     }
                 }
@@ -506,12 +527,27 @@ namespace Pathfinding.Tests
             Debug.Log("── Zestaw 6: Poprawność geometrii ścieżki ──");
             _report.AppendLine("\n── ZESTAW 6: GEOMETRIA ŚCIEŻKI ──");
 
-            GridMap ds2Snapshot = CreateDS2SnapshotMap(42, out Vector2Int ds2Start, out Vector2Int ds2Target);
+            var costCheck = new Pathfinding.Core.PathfindingResult
+            {
+                Path = new List<Vector2Int>
+                {
+                    new Vector2Int(1, 0),
+                    new Vector2Int(2, 1),
+                    new Vector2Int(2, 2)
+                }
+            };
+            costCheck.CalculatePathCost(Vector2Int.zero);
+            RecordResult("PathCost10_14_KnownRoute",
+                costCheck.PathCost == 34,
+                $"Oczekiwano kosztu 34, otrzymano {costCheck.PathCost}.",
+                "Ruchy: prosty (10) + diagonalny (14) + prosty (10)");
+
+            GridMap ds1Snapshot = CreateDS1SnapshotMap(42, out Vector2Int ds1Start, out Vector2Int ds1Target);
 
             var maps = new (string name, GridMap map, Vector2Int start, Vector2Int target)[]
             {
                 ("Simple", CreateTestMap(), new Vector2Int(1, 1), new Vector2Int(28, 17)),
-                ("DS2Snapshot", ds2Snapshot, ds2Start, ds2Target),
+                ("DS1Snapshot", ds1Snapshot, ds1Start, ds1Target),
                 ("CornerBlocked", CreateDiagonalCornerBlockedMap(), new Vector2Int(0, 0), new Vector2Int(1, 1)),
             };
 
@@ -530,11 +566,11 @@ namespace Pathfinding.Tests
                 }
             }
 
-            GridMap ds2A = CreateDS2SnapshotMap(123, out _, out _);
-            GridMap ds2B = CreateDS2SnapshotMap(123, out _, out _);
-            RecordResult("DS2_Snapshot_Determinism",
-                MapsHaveSameWalkability(ds2A, ds2B),
-                "Ten sam seed DS2 wygenerował inny układ przeszkód.",
+            GridMap ds1A = CreateDS1SnapshotMap(123, out _, out _);
+            GridMap ds1B = CreateDS1SnapshotMap(123, out _, out _);
+            RecordResult("DS1_Snapshot_Determinism",
+                MapsHaveSameWalkability(ds1A, ds1B),
+                "Ten sam seed DS1 wygenerował inny układ przeszkód.",
                 "Seed=123");
         }
 
@@ -608,7 +644,123 @@ namespace Pathfinding.Tests
         }
 
         // ─────────────────────────────────────────────────────────
-        //  ZESTAW 8: DETERMINIZM DS3 ESCAPING TARGET
+        //  ZESTAW 8: DETERMINIZM PRODUKCYJNYCH SYMULACJI DS1 I DS2
+        // ─────────────────────────────────────────────────────────
+
+        private void RunDS1DS2DynamicDeterminismTests()
+        {
+            Debug.Log("── Zestaw 8: Determinizm DS1 i DS2 ──");
+            _report.AppendLine("\n── ZESTAW 8: DETERMINIZM DS1 I DS2 ──");
+
+            GridMap map = CreateTestMap();
+            Vector2Int start = new Vector2Int(1, 1);
+            Vector2Int target = new Vector2Int(28, 17);
+            int dynamicRepetitions = Math.Min(repetitions, 20);
+
+            PathfindingVisualizer visualizer = GetComponent<PathfindingVisualizer>();
+            if (visualizer == null)
+                visualizer = gameObject.AddComponent<PathfindingVisualizer>();
+
+            visualizer.movingObstacleCount = 3;
+            visualizer.patrolLength = 6;
+            visualizer.maxDS1Replans = 120;
+            visualizer.maxDS1ConsecutiveFailedReplans = 20;
+            visualizer.pathObstructionChanges = 40;
+            visualizer.pathObstructionSpacing = 8;
+
+            var scenarios = new[]
+            {
+                PathfindingVisualizer.ScenarioType.DS1_MovingObstacles,
+                PathfindingVisualizer.ScenarioType.DS2_PathObstruction
+            };
+
+            foreach (PathfindingVisualizer.ScenarioType dynamicScenario in scenarios)
+            {
+                foreach (IPathfindingAlgorithm algorithm in GetAllAlgorithms())
+                {
+                    Pathfinding.Core.PathfindingResult reference =
+                        visualizer.RunDynamicSimulationForDeterminism(
+                            dynamicScenario,
+                            CreateFreshAlgorithm(algorithm.AlgorithmName),
+                            map,
+                            start,
+                            target,
+                            mapSeed: 42,
+                            testId: 7);
+
+                    bool allMatch = true;
+                    string failReason = "";
+                    for (int run = 0; run < dynamicRepetitions; run++)
+                    {
+                        Pathfinding.Core.PathfindingResult repeated =
+                            visualizer.RunDynamicSimulationForDeterminism(
+                                dynamicScenario,
+                                CreateFreshAlgorithm(algorithm.AlgorithmName),
+                                map,
+                                start,
+                                target,
+                                mapSeed: 42,
+                                testId: 7);
+
+                        if (!DynamicResultsMatch(reference, repeated, out failReason))
+                        {
+                            allMatch = false;
+                            failReason = $"Run {run}: {failReason}";
+                            break;
+                        }
+                    }
+
+                    RecordResult(
+                        $"{dynamicScenario}_Repeat_{algorithm.AlgorithmName}",
+                        allMatch,
+                        failReason,
+                        $"PathFound={reference.PathFound}, Replans={reference.PathRecalculations}, " +
+                        $"Steps={reference.Path.Count}, Runs={dynamicRepetitions}, StableMapSeed=42");
+                }
+            }
+        }
+
+        private bool DynamicResultsMatch(
+            Pathfinding.Core.PathfindingResult expected,
+            Pathfinding.Core.PathfindingResult actual,
+            out string failReason)
+        {
+            failReason = "";
+            if (expected.PathFound != actual.PathFound)
+            {
+                failReason = $"PathFound: expected={expected.PathFound}, actual={actual.PathFound}";
+                return false;
+            }
+
+            if (expected.PathRecalculations != actual.PathRecalculations)
+            {
+                failReason = $"Replans: expected={expected.PathRecalculations}, actual={actual.PathRecalculations}";
+                return false;
+            }
+
+            if (expected.ExploredNodes != actual.ExploredNodes ||
+                expected.JumpScannedCells != actual.JumpScannedCells)
+            {
+                failReason = $"Search metrics: nodes {expected.ExploredNodes}/{actual.ExploredNodes}, " +
+                             $"jump cells {expected.JumpScannedCells}/{actual.JumpScannedCells}";
+                return false;
+            }
+
+            if (expected.PathCost != actual.PathCost ||
+                Math.Abs(expected.PathLength - actual.PathLength) > 0.0001f ||
+                expected.DirectionChanges != actual.DirectionChanges)
+            {
+                failReason = $"Path metrics: cost {expected.PathCost}/{actual.PathCost}, " +
+                             $"length {expected.PathLength:F4}/{actual.PathLength:F4}, " +
+                             $"turns {expected.DirectionChanges}/{actual.DirectionChanges}";
+                return false;
+            }
+
+            return VectorSequencesMatch(expected.Path, actual.Path, "AgentPath", out failReason);
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  ZESTAW 9: DETERMINIZM DS3 ESCAPING TARGET
         // ─────────────────────────────────────────────────────────
 
         /// <summary>
@@ -619,8 +771,8 @@ namespace Pathfinding.Tests
         /// </summary>
         private void RunDS3EscapingTargetDeterminismTests()
         {
-            Debug.Log("── Zestaw 8: Determinizm DS3 Escaping Target ──");
-            _report.AppendLine("\n── ZESTAW 8: DS3 ESCAPING TARGET ──");
+            Debug.Log("── Zestaw 9: Determinizm DS3 Escaping Target ──");
+            _report.AppendLine("\n── ZESTAW 9: DS3 ESCAPING TARGET ──");
 
             GridMap map = CreateTestMap();
             Vector2Int start = new Vector2Int(1, 1);
@@ -636,98 +788,101 @@ namespace Pathfinding.Tests
 
             int testSeed = 42;
             int maxEscapes = 50;
+            int ds3Repetitions = Math.Min(repetitions, 50);
             var algorithms = GetAllAlgorithms();
-
-            // Zbierz sekwencje pozycji celu per algorytm
-            var allTargetSequences = new List<List<Vector2Int>>();
-            var allAlgorithmNames = new List<string>();
+            var referenceTraces = new List<(string algorithm, DS3EscapeTrace trace)>();
+            PathfindingVisualizer productionVisualizer = GetComponent<PathfindingVisualizer>();
+            if (productionVisualizer == null)
+                productionVisualizer = gameObject.AddComponent<PathfindingVisualizer>();
+            productionVisualizer.maxTargetEscapes = maxEscapes;
 
             foreach (var algo in algorithms)
             {
-                var targetSequence = SimulateDS3EscapingTarget(
-                    algo, map, start, target, testSeed, maxEscapes);
-                allTargetSequences.Add(targetSequence);
-                allAlgorithmNames.Add(algo.AlgorithmName);
-            }
+                var referenceAlgo = CreateFreshAlgorithm(algo.AlgorithmName);
+                var referenceTrace = SimulateDS3EscapingTarget(
+                    referenceAlgo, map, start, target, testSeed, maxEscapes);
+                referenceTraces.Add((algo.AlgorithmName, referenceTrace));
 
-            // Sprawdź: sekwencja pozycji celu musi być identyczna dla WSZYSTKICH algorytmów
-            if (allTargetSequences.Count < 2)
-            {
-                RecordResult("DS3_EscapingTarget_AllAlgos", true, "",
-                    "Mniej niż 2 algorytmy do porównania.");
-                return;
-            }
+                bool traceValid = ValidateDS3EscapeTrace(
+                    referenceTrace, map, start, out string traceFailReason);
+                RecordResult($"DS3_EscapingTarget_Rules_{algo.AlgorithmName}", traceValid, traceFailReason,
+                    $"Escapes={referenceTrace.TargetPositions.Count - 1}, ReachedTarget={referenceTrace.ReachedTarget}");
 
-            List<Vector2Int> referenceSequence = allTargetSequences[0];
-            string referenceAlgo = allAlgorithmNames[0];
-            bool allMatch = true;
-            string failReason = "";
+                bool allMatch = true;
+                string failReason = "";
 
-            for (int algoIndex = 1; algoIndex < allTargetSequences.Count; algoIndex++)
-            {
-                List<Vector2Int> otherSequence = allTargetSequences[algoIndex];
-                string otherAlgo = allAlgorithmNames[algoIndex];
-
-                if (referenceSequence.Count != otherSequence.Count)
+                for (int run = 0; run < ds3Repetitions; run++)
                 {
-                    allMatch = false;
-                    failReason = $"{referenceAlgo} ma {referenceSequence.Count} ucieczek, {otherAlgo} ma {otherSequence.Count}";
-                    break;
-                }
+                    var freshAlgo = CreateFreshAlgorithm(algo.AlgorithmName);
+                    var repeatTrace = SimulateDS3EscapingTarget(
+                        freshAlgo, map, start, target, testSeed, maxEscapes);
 
-                for (int step = 0; step < referenceSequence.Count; step++)
-                {
-                    if (referenceSequence[step] != otherSequence[step])
+                    if (!DS3TracesMatch(referenceTrace, repeatTrace, out failReason))
                     {
                         allMatch = false;
-                        failReason = $"Krok {step}: {referenceAlgo}={referenceSequence[step]}, {otherAlgo}={otherSequence[step]}";
                         break;
                     }
                 }
 
-                if (!allMatch) break;
+                RecordResult($"DS3_EscapingTarget_Repeat_{algo.AlgorithmName}", allMatch, failReason,
+                    $"Escapes={referenceTrace.TargetPositions.Count - 1}, Runs={ds3Repetitions}, Seed={testSeed}");
+
+                Pathfinding.Core.PathfindingResult productionReference =
+                    productionVisualizer.RunDynamicSimulationForDeterminism(
+                        PathfindingVisualizer.ScenarioType.DS3_EscapingTarget,
+                        CreateFreshAlgorithm(algo.AlgorithmName), map, start, target,
+                        mapSeed: testSeed, testId: 0);
+                Pathfinding.Core.PathfindingResult productionRepeat =
+                    productionVisualizer.RunDynamicSimulationForDeterminism(
+                        PathfindingVisualizer.ScenarioType.DS3_EscapingTarget,
+                        CreateFreshAlgorithm(algo.AlgorithmName), map, start, target,
+                        mapSeed: testSeed, testId: 0);
+                bool productionMatch = DynamicResultsMatch(
+                    productionReference, productionRepeat, out string productionFailReason);
+                RecordResult($"DS3_Production_Repeat_{algo.AlgorithmName}",
+                    productionMatch, productionFailReason,
+                    $"PathFound={productionReference.PathFound}, " +
+                    $"Replans={productionReference.PathRecalculations}");
             }
 
-            RecordResult("DS3_EscapingTarget_AllAlgosSameSequence", allMatch, failReason,
-                $"Algorytmów={algorithms.Count}, Ucieczek={referenceSequence.Count}, Seed={testSeed}");
-
-            // Sprawdź powtarzalność: ten sam algorytm uruchomiony wiele razy daje tę samą sekwencję
-            foreach (var algo in algorithms)
+            bool commonSchedule = true;
+            string scheduleFailReason = "";
+            DS3EscapeTrace baseline = referenceTraces[0].trace;
+            for (int i = 1; i < referenceTraces.Count && commonSchedule; i++)
             {
-                var seq1 = SimulateDS3EscapingTarget(algo, map, start, target, testSeed, maxEscapes);
-                var freshAlgo = CreateFreshAlgorithm(algo.AlgorithmName);
-                var seq2 = SimulateDS3EscapingTarget(freshAlgo, map, start, target, testSeed, maxEscapes);
-
-                bool seqMatch = seq1.Count == seq2.Count;
-                string seqFailReason = "";
-
-                if (seqMatch)
+                DS3EscapeTrace other = referenceTraces[i].trace;
+                int commonLength = Math.Min(
+                    baseline.TargetPositions.Count, other.TargetPositions.Count);
+                for (int step = 0; step < commonLength; step++)
                 {
-                    for (int s = 0; s < seq1.Count; s++)
+                    if (baseline.TargetPositions[step] != other.TargetPositions[step])
                     {
-                        if (seq1[s] != seq2[s])
-                        {
-                            seqMatch = false;
-                            seqFailReason = $"Krok {s}: run1={seq1[s]}, run2={seq2[s]}";
-                            break;
-                        }
+                        commonSchedule = false;
+                        scheduleFailReason = $"Target[{step}]: {referenceTraces[0].algorithm}=" +
+                                             $"{baseline.TargetPositions[step]}, " +
+                                             $"{referenceTraces[i].algorithm}={other.TargetPositions[step]}";
+                        break;
                     }
                 }
-                else
-                {
-                    seqFailReason = $"Różna długość: run1={seq1.Count}, run2={seq2.Count}";
-                }
-
-                RecordResult($"DS3_EscapingTarget_Repeat_{algo.AlgorithmName}", seqMatch, seqFailReason,
-                    $"Ucieczek={seq1.Count}");
             }
+
+            RecordResult("DS3_CommonTargetSchedule_AllAlgorithms", commonSchedule,
+                scheduleFailReason, "Wspólny prefiks trajektorii celu dla wszystkich algorytmów.");
+        }
+
+        private class DS3EscapeTrace
+        {
+            public readonly List<Vector2Int> TargetPositions = new List<Vector2Int>();
+            public readonly List<Vector2Int> AgentPositionsAtEscape = new List<Vector2Int>();
+            public bool ReachedTarget;
+            public int Replans;
         }
 
         /// <summary>
         /// Symuluje scenariusz DS3 (uciekający cel) i zwraca sekwencję pozycji celu
         /// po każdej ucieczce.
         /// </summary>
-        private List<Vector2Int> SimulateDS3EscapingTarget(
+        private DS3EscapeTrace SimulateDS3EscapingTarget(
             IPathfindingAlgorithm algorithm,
             GridMap baseMap,
             Vector2Int start,
@@ -743,7 +898,8 @@ namespace Pathfinding.Tests
             Vector2Int currentPos = start;
             int stepsSinceLastEscape = 0;
             int totalEscapes = 0;
-            var targetPositions = new List<Vector2Int> { currentTarget };
+            var trace = new DS3EscapeTrace();
+            trace.TargetPositions.Add(currentTarget);
 
             int safetyLimit = grid.Width * grid.Height * 4;
 
@@ -784,34 +940,15 @@ namespace Pathfinding.Tests
                         stepsSinceLastEscape = 0;
 
                         var validDirs = new List<Vector2Int>();
-                        Vector2Int[] escapeDirs = {
-                            new Vector2Int(1, 0), new Vector2Int(-1, 0),
-                            new Vector2Int(0, 1), new Vector2Int(0, -1),
-                            new Vector2Int(1, 1), new Vector2Int(-1, 1),
-                            new Vector2Int(1, -1), new Vector2Int(-1, -1)
-                        };
-
-                        foreach (var dir in escapeDirs)
+                        foreach (var dir in DS3EscapeDirections)
                         {
                             Vector2Int candidate = currentTarget + dir;
                             if (!grid.IsValidCoordinate(candidate.x, candidate.y))
                                 continue;
-                            if (!grid.IsWalkable(candidate))
+                            if (!IsDS3TargetMoveLegal(grid, currentTarget, candidate))
                                 continue;
 
-                            int oldDistX = Math.Abs(currentTarget.x - currentPos.x);
-                            int oldDistY = Math.Abs(currentTarget.y - currentPos.y);
-                            int newDistX = Math.Abs(candidate.x - currentPos.x);
-                            int newDistY = Math.Abs(candidate.y - currentPos.y);
-
-                            bool shorterX = newDistX < oldDistX;
-                            bool shorterY = newDistY < oldDistY;
-                            bool longerX = newDistX > oldDistX;
-                            bool longerY = newDistY > oldDistY;
-
-                            if (shorterX && !longerY)
-                                continue;
-                            if (shorterY && !longerX)
+                            if (!IsDS3EscapeDirectionAllowed(currentTarget, candidate, start))
                                 continue;
 
                             validDirs.Add(dir);
@@ -828,7 +965,9 @@ namespace Pathfinding.Tests
                             Vector2Int chosen = validDirs[rng.Next(validDirs.Count)];
                             currentTarget += chosen;
                             totalEscapes++;
-                            targetPositions.Add(currentTarget);
+                            trace.TargetPositions.Add(currentTarget);
+                            trace.AgentPositionsAtEscape.Add(currentPos);
+                            trace.Replans++;
                             needsReplan = true;
                             break;
                         }
@@ -842,7 +981,164 @@ namespace Pathfinding.Tests
                     continue;
             }
 
-            return targetPositions;
+            trace.ReachedTarget = currentPos == currentTarget;
+            return trace;
+        }
+
+        private static readonly Vector2Int[] DS3EscapeDirections =
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1),
+            new Vector2Int(1, 1),
+            new Vector2Int(-1, 1),
+            new Vector2Int(1, -1),
+            new Vector2Int(-1, -1)
+        };
+
+        private bool IsDS3EscapeDirectionAllowed(
+            Vector2Int currentTarget, Vector2Int candidate, Vector2Int escapeAnchor)
+        {
+            float oldDistance = TestPointSelector.CalculateOctagonalDistance(
+                escapeAnchor, currentTarget);
+            float newDistance = TestPointSelector.CalculateOctagonalDistance(
+                escapeAnchor, candidate);
+            return newDistance + 0.0001f >= oldDistance;
+        }
+
+        private bool IsDS3TargetMoveLegal(
+            GridMap grid, Vector2Int from, Vector2Int to)
+        {
+            int dx = to.x - from.x;
+            int dy = to.y - from.y;
+            if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1 || (dx == 0 && dy == 0))
+                return false;
+            if (!grid.IsWalkable(from) || !grid.IsWalkable(to))
+                return false;
+            if (dx != 0 && dy != 0)
+                return grid.IsWalkable(from.x + dx, from.y) &&
+                       grid.IsWalkable(from.x, from.y + dy);
+            return true;
+        }
+
+        private bool ValidateDS3EscapeTrace(
+            DS3EscapeTrace trace, GridMap map, Vector2Int escapeAnchor,
+            out string failReason)
+        {
+            failReason = "";
+
+            if (trace.TargetPositions.Count == 0)
+            {
+                failReason = "Brak pozycji startowej celu w trace.";
+                return false;
+            }
+
+            if (trace.TargetPositions.Count < 2)
+            {
+                failReason = "Scenariusz DS3 nie wygenerował żadnej ucieczki celu.";
+                return false;
+            }
+
+            if (trace.AgentPositionsAtEscape.Count != trace.TargetPositions.Count - 1)
+            {
+                failReason = $"AgentPositionsAtEscape={trace.AgentPositionsAtEscape.Count}, TargetMoves={trace.TargetPositions.Count - 1}";
+                return false;
+            }
+
+            for (int i = 0; i < trace.TargetPositions.Count; i++)
+            {
+                Vector2Int target = trace.TargetPositions[i];
+                if (!map.IsWalkable(target))
+                {
+                    failReason = $"TargetPositions[{i}]={target} nie jest walkable.";
+                    return false;
+                }
+            }
+
+            for (int i = 1; i < trace.TargetPositions.Count; i++)
+            {
+                Vector2Int previousTarget = trace.TargetPositions[i - 1];
+                Vector2Int currentTarget = trace.TargetPositions[i];
+                Vector2Int delta = currentTarget - previousTarget;
+
+                if (Math.Abs(delta.x) > 1 || Math.Abs(delta.y) > 1 || (delta.x == 0 && delta.y == 0))
+                {
+                    failReason = $"Niepoprawny skok celu {previousTarget}->{currentTarget}.";
+                    return false;
+                }
+
+                if (!IsDS3TargetMoveLegal(map, previousTarget, currentTarget))
+                {
+                    failReason = $"Nielegalny ruch celu przez przeszkodę lub róg: {previousTarget}->{currentTarget}.";
+                    return false;
+                }
+
+                if (!IsDS3EscapeDirectionAllowed(
+                        previousTarget, currentTarget, escapeAnchor))
+                {
+                    failReason = $"Ucieczka {previousTarget}->{currentTarget} zbliża cel do stałego punktu startowego {escapeAnchor}.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool DS3TracesMatch(DS3EscapeTrace expected, DS3EscapeTrace actual, out string failReason)
+        {
+            failReason = "";
+
+            if (expected.ReachedTarget != actual.ReachedTarget)
+            {
+                failReason = $"ReachedTarget: expected={expected.ReachedTarget}, actual={actual.ReachedTarget}";
+                return false;
+            }
+
+            if (!VectorSequencesMatch(expected.TargetPositions, actual.TargetPositions, "TargetPositions", out failReason))
+                return false;
+
+            if (!VectorSequencesMatch(expected.AgentPositionsAtEscape, actual.AgentPositionsAtEscape, "AgentPositionsAtEscape", out failReason))
+                return false;
+
+            if (expected.Replans != actual.Replans)
+            {
+                failReason = $"Replans: expected={expected.Replans}, actual={actual.Replans}";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool VectorSequencesMatch(List<Vector2Int> expected, List<Vector2Int> actual, string label, out string failReason)
+        {
+            failReason = "";
+
+            if (expected == null || actual == null)
+            {
+                if (expected == actual)
+                    return true;
+
+                failReason = $"{label}: expected null={expected == null}, actual null={actual == null}";
+                return false;
+            }
+
+            if (expected.Count != actual.Count)
+            {
+                failReason = $"{label}.Count: expected={expected.Count}, actual={actual.Count}";
+                return false;
+            }
+
+            for (int i = 0; i < expected.Count; i++)
+            {
+                if (expected[i] != actual[i])
+                {
+                    failReason = $"{label}[{i}]: expected={expected[i]}, actual={actual[i]}";
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         // ─────────────────────────────────────────────────────────
@@ -945,7 +1241,7 @@ namespace Pathfinding.Tests
             return new GridMap(walkable);
         }
 
-        private GridMap CreateDS2SnapshotMap(int seed, out Vector2Int start, out Vector2Int target)
+        private GridMap CreateDS1SnapshotMap(int seed, out Vector2Int start, out Vector2Int target)
         {
             GridMap map = new GridMap(12, 12, true);
             start = new Vector2Int(1, 1);

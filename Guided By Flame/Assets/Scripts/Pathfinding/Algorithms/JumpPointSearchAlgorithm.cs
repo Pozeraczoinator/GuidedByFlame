@@ -43,9 +43,9 @@ namespace Pathfinding.Algorithms
                 // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
                 if (compare == 0)
                 {
-                    int posA = Pos.x * 10000 + Pos.y;
-                    int posB = other.Pos.x * 10000 + other.Pos.y;
-                    compare = posA.CompareTo(posB);
+                    compare = Pos.x.CompareTo(other.Pos.x);
+                    if (compare == 0)
+                        compare = Pos.y.CompareTo(other.Pos.y);
                 }
                 return -compare;
             }

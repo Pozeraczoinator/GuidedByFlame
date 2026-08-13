@@ -92,6 +92,7 @@ Pathfinding/
 | `ExploredNodes` | int | Węzły dodane do closed set |
 | `JumpScannedCells` | int | Pola sprawdzone wewnątrz skoków JPS; dla innych algorytmów 0 |
 | `PathLength` | float | Geometryczna długość ścieżki |
+| `PathCost` | int | Dyskretny koszt faktycznej ścieżki: 10 ortogonalnie, 14 diagonalnie |
 | `ExecutionTimeMs` | double | Czas Stopwatch |
 | `ExecutionTicks` | long | CPU ticks Stopwatch |
 | `GCAllocBytes` | long | Delta GC.GetTotalMemory |
@@ -151,7 +152,7 @@ Od wersji `feature/pathfinding-audit-determinism`:
 ## 9. Format Wyjściowy CSV
 
 **Separator**: średnik (`;`)
-**34 kolumny**:
+**35 kolumn**:
 ```
 TestID;Algorithm;StartX;StartY;TargetX;TargetY;Scenario;ObstacleDensity;
 MapTopology;MapSeed;MapDensity;MapWidth;MapHeight;
@@ -159,7 +160,7 @@ DistanceBucket;EuclideanDistance;OctagonalDistance;ReferenceShortestPathLength;
 PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;
 AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;
 AvgExecutionTicks;AvgGCAllocBytes;
-ExploredNodes;JumpScannedCells;PathLength;DirectionChanges;PathSmoothness;PathRecalculations;CPUTemperature
+ExploredNodes;JumpScannedCells;PathLength;PathCost10_14;DirectionChanges;PathSmoothness;PathRecalculations;CPUTemperature
 ```
 
 ---

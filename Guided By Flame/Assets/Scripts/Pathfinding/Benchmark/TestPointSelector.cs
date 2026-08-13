@@ -57,7 +57,9 @@ namespace Pathfinding.Benchmark
         {
             public int X { get; }
             public int Y { get; }
-            public float Cost { get; set; }
+            public int Cost { get; set; }
+            public float GeometricLength { get; set; }
+            public DistanceNode Parent { get; set; }
 
             private int _heapIndex;
 
@@ -65,7 +67,7 @@ namespace Pathfinding.Benchmark
             {
                 X = x;
                 Y = y;
-                Cost = float.MaxValue;
+                Cost = int.MaxValue;
             }
 
             public int HeapIndex
@@ -79,9 +81,9 @@ namespace Pathfinding.Benchmark
                 int compare = Cost.CompareTo(other.Cost);
                 if (compare == 0)
                 {
-                    int posA = X * 10000 + Y;
-                    int posB = other.X * 10000 + other.Y;
-                    compare = posA.CompareTo(posB);
+                    compare = X.CompareTo(other.X);
+                    if (compare == 0)
+                        compare = Y.CompareTo(other.Y);
                 }
                 return -compare;
             }
@@ -275,7 +277,11 @@ namespace Pathfinding.Benchmark
             var closedSet = new HashSet<Vector2Int>();
             var allNodes = new Dictionary<Vector2Int, DistanceNode>();
 
-            var startNode = new DistanceNode(start.x, start.y) { Cost = 0f };
+            var startNode = new DistanceNode(start.x, start.y)
+            {
+                Cost = 0,
+                GeometricLength = 0f
+            };
             allNodes[start] = startNode;
             openSet.Add(startNode);
 
@@ -288,7 +294,11 @@ namespace Pathfinding.Benchmark
                     continue;
 
                 closedSet.Add(current);
-                reachable.Add(new ReachableDistance { Position = current, PathLength = currentNode.Cost });
+                reachable.Add(new ReachableDistance
+                {
+                    Position = current,
+                    PathLength = currentNode.GeometricLength
+                });
 
                 for (int dx = -1; dx <= 1; dx++)
                 {
@@ -317,13 +327,16 @@ namespace Pathfinding.Benchmark
                             allNodes[next] = nextNode;
                         }
 
-                        float stepCost = (dx != 0 && dy != 0) ? 1.414f : 1.0f;
-                        float newCost = currentNode.Cost + stepCost;
+                        bool diagonal = dx != 0 && dy != 0;
+                        int stepCost = diagonal ? 14 : 10;
+                        int newCost = currentNode.Cost + stepCost;
                         bool inOpenSet = openSet.Contains(nextNode);
 
                         if (newCost < nextNode.Cost || !inOpenSet)
                         {
                             nextNode.Cost = newCost;
+                            nextNode.GeometricLength = currentNode.GeometricLength +
+                                (diagonal ? 1.414f : 1.0f);
 
                             if (!inOpenSet)
                                 openSet.Add(nextNode);
@@ -347,12 +360,24 @@ namespace Pathfinding.Benchmark
         }
 
         /// <summary>
-        /// Dijkstra na siatce 8-kierunkowej. Zwraca realną geometryczną długość najkrótszej ścieżki.
-        /// Ruch prosty = 1.0, diagonalny = 1.414.
+        /// Dijkstra na siatce 8-kierunkowej. Wewnętrznie używa kosztów
+        /// całkowitych 10/14, a zwraca długość geometryczną 1.0/1.414.
         /// </summary>
         public static bool TryGetShortestPathLength(GridMap grid, Vector2Int start, Vector2Int goal,
             out float pathLength)
         {
+            return TryGetShortestPath(grid, start, goal, out _, out pathLength);
+        }
+
+        /// <summary>
+        /// Kanoniczna ścieżka referencyjna Dijkstry. Zwracana lista nie zawiera
+        /// pola startowego. Wybór trasy wykorzystuje całkowity koszt 10/14,
+        /// natomiast zwracana długość pozostaje w jednostkach 1.0/1.414.
+        /// </summary>
+        public static bool TryGetShortestPath(GridMap grid, Vector2Int start, Vector2Int goal,
+            out List<Vector2Int> path, out float pathLength)
+        {
+            path = new List<Vector2Int>();
             pathLength = 0f;
 
             if (!grid.IsWalkable(start) || !grid.IsWalkable(goal))
@@ -365,7 +390,11 @@ namespace Pathfinding.Benchmark
             var closedSet = new HashSet<Vector2Int>();
             var allNodes = new Dictionary<Vector2Int, DistanceNode>();
 
-            var startNode = new DistanceNode(start.x, start.y) { Cost = 0f };
+            var startNode = new DistanceNode(start.x, start.y)
+            {
+                Cost = 0,
+                GeometricLength = 0f
+            };
             allNodes[start] = startNode;
             openSet.Add(startNode);
 
@@ -379,7 +408,14 @@ namespace Pathfinding.Benchmark
 
                 if (current == goal)
                 {
-                    pathLength = currentNode.Cost;
+                    pathLength = currentNode.GeometricLength;
+                    DistanceNode pathNode = currentNode;
+                    while (pathNode != startNode)
+                    {
+                        path.Add(new Vector2Int(pathNode.X, pathNode.Y));
+                        pathNode = pathNode.Parent;
+                    }
+                    path.Reverse();
                     return true;
                 }
 
@@ -412,13 +448,17 @@ namespace Pathfinding.Benchmark
                             allNodes[next] = nextNode;
                         }
 
-                        float stepCost = (dx != 0 && dy != 0) ? 1.414f : 1.0f;
-                        float newCost = currentNode.Cost + stepCost;
+                        bool diagonal = dx != 0 && dy != 0;
+                        int stepCost = diagonal ? 14 : 10;
+                        int newCost = currentNode.Cost + stepCost;
                         bool inOpenSet = openSet.Contains(nextNode);
 
                         if (newCost < nextNode.Cost || !inOpenSet)
                         {
                             nextNode.Cost = newCost;
+                            nextNode.GeometricLength = currentNode.GeometricLength +
+                                (diagonal ? 1.414f : 1.0f);
+                            nextNode.Parent = currentNode;
 
                             if (!inOpenSet)
                                 openSet.Add(nextNode);

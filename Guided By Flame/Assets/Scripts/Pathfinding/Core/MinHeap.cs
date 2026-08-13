@@ -59,6 +59,12 @@ namespace Pathfinding.Core
             get { return _currentItemCount; }
         }
 
+        public void Clear()
+        {
+            Array.Clear(_items, 0, _currentItemCount);
+            _currentItemCount = 0;
+        }
+
         public bool Contains(T item)
         {
             if (item == null || item.HeapIndex < 0 || item.HeapIndex >= _currentItemCount)

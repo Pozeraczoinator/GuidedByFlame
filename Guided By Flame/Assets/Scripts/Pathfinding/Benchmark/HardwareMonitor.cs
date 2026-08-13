@@ -107,7 +107,10 @@ namespace Pathfinding.Benchmark
             {
                 if (_isAsyncMonitoring)
                 {
-                    RefreshCachedTemperatureIfStale();
+                    // Wątek uruchomiony przez StartTemperatureMonitoring odświeża cache
+                    // co sekundę. Odczyt benchmarku nie może ponownie wykonywać tutaj
+                    // synchronicznego HTTP/WMI, bo blokowałoby to główny wątek nawet na
+                    // kilka sekund dla każdego zapisywanego wyniku.
                     WarnTemperatureUnavailableOnce(_cachedTemperature);
                     return _cachedTemperature;
                 }
@@ -142,9 +145,9 @@ namespace Pathfinding.Benchmark
             if (temperature >= 0f || _checkedAvailability)
                 return;
 
-            Debug.LogWarning("[HardwareMonitor] Nie znaleziono temperatury CPU przez LibreHardwareMonitorLib, Libre/OpenHardwareMonitor WMI ani ACPI. " +
-                             "Aby uzyc biblioteki bezposrednio, dodaj LibreHardwareMonitorLib.dll do Assets/Plugins. " +
-                             "Dla WMI uruchom LibreHardwareMonitor jako administrator i sprawdz, czy sensory sa widoczne w WMI.");
+            Debug.LogWarning("[HardwareMonitor] Nie znaleziono temperatury CPU przez Libre/OpenHardwareMonitor Web API, WMI ani ACPI. " +
+                             "Uruchom LibreHardwareMonitor/OpenHardwareMonitor jako osobny proces z wlaczonym Web API albo WMI. " +
+                             "Bezposrednie otwieranie LibreHardwareMonitorLib w procesie Unity jest celowo pominiete, bo moze powodowac native crash edytora.");
             _checkedAvailability = true;
         }
 
@@ -171,15 +174,18 @@ namespace Pathfinding.Benchmark
 
         private static float GetCPUTemperatureFromProviders()
         {
-            float temperature = GetCPUTemperatureFromLibreHardwareMonitorLib();
+            // Prefer out-of-process providers. Opening LibreHardwareMonitorLib inside
+            // the Unity Editor can hard-crash the process in native sensor code on
+            // some hardware/driver combinations, which cannot be caught by C#.
+            float temperature = GetCPUTemperatureFromLibreHardwareMonitorWeb();
             if (temperature >= 0f)
                 return temperature;
 
-            temperature = GetCPUTemperatureFromLibreHardwareMonitorWeb();
+            temperature = GetCPUTemperatureWMI();
             if (temperature >= 0f)
                 return temperature;
 
-            return GetCPUTemperatureWMI();
+            return -1f;
         }
 
         private static float GetCPUTemperatureFromLibreHardwareMonitorLib()

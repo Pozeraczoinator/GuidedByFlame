@@ -35,6 +35,8 @@ namespace Pathfinding.Visualization
         private SerializedProperty _pairsPerBucket;
         private SerializedProperty _movingObstacleCount;
         private SerializedProperty _patrolLength;
+        private SerializedProperty _maxDS1Replans;
+        private SerializedProperty _maxDS1ConsecutiveFailedReplans;
         private SerializedProperty _pathObstructionChanges;
         private SerializedProperty _pathObstructionSpacing;
         private SerializedProperty _maxTargetEscapes;
@@ -88,6 +90,8 @@ namespace Pathfinding.Visualization
             _pairsPerBucket = serializedObject.FindProperty("pairsPerBucket");
             _movingObstacleCount = serializedObject.FindProperty("movingObstacleCount");
             _patrolLength = serializedObject.FindProperty("patrolLength");
+            _maxDS1Replans = serializedObject.FindProperty("maxDS1Replans");
+            _maxDS1ConsecutiveFailedReplans = serializedObject.FindProperty("maxDS1ConsecutiveFailedReplans");
             _pathObstructionChanges = serializedObject.FindProperty("pathObstructionChanges");
             _pathObstructionSpacing = serializedObject.FindProperty("pathObstructionSpacing");
             _maxTargetEscapes = serializedObject.FindProperty("maxTargetEscapes");
@@ -270,6 +274,8 @@ namespace Pathfinding.Visualization
             {
                 EditorGUILayout.PropertyField(_movingObstacleCount);
                 EditorGUILayout.PropertyField(_patrolLength);
+                EditorGUILayout.PropertyField(_maxDS1Replans);
+                EditorGUILayout.PropertyField(_maxDS1ConsecutiveFailedReplans);
             }
 
             if (showDs2)

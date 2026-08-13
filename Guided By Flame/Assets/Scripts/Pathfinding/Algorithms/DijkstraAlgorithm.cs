@@ -1,8 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 using Pathfinding.Core;
-using System;
+using CorePathfindingResult = Pathfinding.Core.PathfindingResult;
 
 namespace Pathfinding.Algorithms
 {
@@ -10,14 +11,15 @@ namespace Pathfinding.Algorithms
     {
         public string AlgorithmName => "Dijkstra";
 
-        private class Node : IHeapItem<Node>
+        private sealed class Node : IHeapItem<Node>
         {
-            public int X { get; }
-            public int Y { get; }
-            public int GCost { get; set; }
-            public Node Parent { get; set; }
-            
-            private int _heapIndex;
+            public readonly int X;
+            public readonly int Y;
+            public int GCost;
+            public Node Parent;
+            public bool Closed;
+            public int SearchId;
+            public int HeapIndex { get; set; } = -1;
 
             public Node(int x, int y)
             {
@@ -25,161 +27,147 @@ namespace Pathfinding.Algorithms
                 Y = y;
             }
 
-            public int HeapIndex
-            {
-                get => _heapIndex;
-                set => _heapIndex = value;
-            }
-
             public int CompareTo(Node other)
             {
-                // Dijkstra korzysta tylko z najmniejszego dotychczasowego kosztu dojścia (GCost)
                 int compare = GCost.CompareTo(other.GCost);
-                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
-                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
                 if (compare == 0)
                 {
-                    int posA = X * 10000 + Y;
-                    int posB = other.X * 10000 + other.Y;
-                    compare = posA.CompareTo(posB);
+                    compare = X.CompareTo(other.X);
+                    if (compare == 0) compare = Y.CompareTo(other.Y);
                 }
-                return -compare; // Zwracamy odwrotność dla MinHeap
+                return -compare;
             }
         }
 
-        public Pathfinding.Core.PathfindingResult FindPath(GridMap grid, Vector2Int startPos, Vector2Int targetPos)
+        private Node[,] _nodes;
+        private MinHeap<Node> _openSet;
+        private int _width;
+        private int _height;
+        private int _searchId;
+
+        public CorePathfindingResult FindPath(
+            GridMap grid, Vector2Int startPos, Vector2Int targetPos)
         {
-            var result = new Pathfinding.Core.PathfindingResult();
+            EnsureWorkspace(grid.Width, grid.Height);
+            BeginSearch();
+
+            var result = new CorePathfindingResult();
             Stopwatch sw = Stopwatch.StartNew();
-
-            Node startNode = new Node(startPos.x, startPos.y);
-            Node targetNode = new Node(targetPos.x, targetPos.y);
-
-            MinHeap<Node> openSet = new MinHeap<Node>(grid.Width * grid.Height);
-            HashSet<Vector2Int> closedSet = new HashSet<Vector2Int>();
-            Dictionary<Vector2Int, Node> allNodes = new Dictionary<Vector2Int, Node>();
-            
+            Node startNode = GetNode(startPos.x, startPos.y);
             startNode.GCost = 0;
-            allNodes[startPos] = startNode;
-            openSet.Add(startNode);
+            _openSet.Add(startNode);
 
-            while (openSet.Count > 0)
+            while (_openSet.Count > 0)
             {
-                Node currentNode = openSet.RemoveFirst();
-                Vector2Int currentPos = new Vector2Int(currentNode.X, currentNode.Y);
-                closedSet.Add(currentPos);
+                Node current = _openSet.RemoveFirst();
+                current.Closed = true;
+                var currentPos = new Vector2Int(current.X, current.Y);
                 result.ExploredNodes++;
                 if (PathfindingRuntimeOptions.RecordExploredNodesHistory)
                     result.ExploredNodesHistory.Add(currentPos);
 
-                if (currentPos == targetPos)
+                if (current.X == targetPos.x && current.Y == targetPos.y)
                 {
                     result.PathFound = true;
-                    RetracePath(startNode, currentNode, result);
-                    sw.Stop();
-                    result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
-                    result.ExecutionTicks = sw.ElapsedTicks;
+                    RetracePath(startNode, current, result);
+                    FinishTiming(sw, result);
                     return result;
                 }
 
-                foreach (Node neighbor in GetNeighbors(grid, currentNode, allNodes))
+                for (int dx = -1; dx <= 1; dx++)
                 {
-                    Vector2Int neighborPos = new Vector2Int(neighbor.X, neighbor.Y);
-                    
-                    if (!grid.IsWalkable(neighborPos) || closedSet.Contains(neighborPos))
-                        continue;
-
-                    // W scenariuszach ważonych GetMovementCost() określa koszt wejścia na pole sąsiada.
-                    float terrainCost = grid.GetMovementCost(neighbor.X, neighbor.Y);
-                    int moveCostToNeighbor = currentNode.GCost + (int)(GetDistance(currentNode, neighbor) * terrainCost);
-                    bool inOpenSet = openSet.Contains(neighbor);
-                    
-                    if (moveCostToNeighbor < neighbor.GCost || !inOpenSet)
+                    for (int dy = -1; dy <= 1; dy++)
                     {
-                        neighbor.GCost = moveCostToNeighbor;
-                        neighbor.Parent = currentNode;
+                        if (dx == 0 && dy == 0) continue;
+                        int x = current.X + dx;
+                        int y = current.Y + dy;
+                        if (!grid.IsValidCoordinate(x, y)) continue;
+                        if (dx != 0 && dy != 0 &&
+                            (!grid.IsWalkable(current.X + dx, current.Y) ||
+                             !grid.IsWalkable(current.X, current.Y + dy)))
+                            continue;
+                        if (!grid.IsWalkable(x, y)) continue;
 
-                        if (!inOpenSet)
-                            openSet.Add(neighbor);
-                        else
-                            openSet.UpdateItem(neighbor);
+                        Node neighbor = GetNode(x, y);
+                        if (neighbor.Closed) continue;
+                        bool inOpenSet = _openSet.Contains(neighbor);
+                        int stepCost = dx != 0 && dy != 0 ? 14 : 10;
+                        int newCost = current.GCost +
+                            (int)(stepCost * grid.GetMovementCost(x, y));
+                        if (newCost < neighbor.GCost || !inOpenSet)
+                        {
+                            neighbor.GCost = newCost;
+                            neighbor.Parent = current;
+                            if (!inOpenSet) _openSet.Add(neighbor);
+                            else _openSet.UpdateItem(neighbor);
+                        }
                     }
                 }
             }
 
-            sw.Stop();
-            result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
-            result.ExecutionTicks = sw.ElapsedTicks;
+            FinishTiming(sw, result);
             return result;
         }
 
-        private void RetracePath(Node startNode, Node endNode, Pathfinding.Core.PathfindingResult result)
+        private void EnsureWorkspace(int width, int height)
         {
-            List<Vector2Int> path = new List<Vector2Int>();
-            Node currentNode = endNode;
-            float length = 0;
+            if (_nodes != null && _width == width && _height == height) return;
+            _width = width;
+            _height = height;
+            _nodes = new Node[width, height];
+            for (int x = 0; x < width; x++)
+                for (int y = 0; y < height; y++)
+                    _nodes[x, y] = new Node(x, y);
+            _openSet = new MinHeap<Node>(width * height);
+            _searchId = 0;
+        }
 
-            while (currentNode != startNode)
+        private void BeginSearch()
+        {
+            _openSet.Clear();
+            if (_searchId == int.MaxValue)
             {
-                path.Add(new Vector2Int(currentNode.X, currentNode.Y));
-                
-                if (currentNode.X != currentNode.Parent.X && currentNode.Y != currentNode.Parent.Y)
-                    length += 1.414f;
-                else
-                    length += 1.0f;
-                    
-                currentNode = currentNode.Parent;
+                for (int x = 0; x < _width; x++)
+                    for (int y = 0; y < _height; y++)
+                        _nodes[x, y].SearchId = 0;
+                _searchId = 1;
             }
-            
+            else _searchId++;
+        }
+
+        private Node GetNode(int x, int y)
+        {
+            Node node = _nodes[x, y];
+            if (node.SearchId != _searchId)
+            {
+                node.SearchId = _searchId;
+                node.GCost = int.MaxValue;
+                node.Parent = null;
+                node.Closed = false;
+                node.HeapIndex = -1;
+            }
+            return node;
+        }
+
+        private static void RetracePath(Node start, Node end, CorePathfindingResult result)
+        {
+            var path = new List<Vector2Int>();
+            float length = 0f;
+            for (Node node = end; node != start; node = node.Parent)
+            {
+                path.Add(new Vector2Int(node.X, node.Y));
+                length += node.X != node.Parent.X && node.Y != node.Parent.Y ? 1.414f : 1f;
+            }
             path.Reverse();
             result.Path = path;
             result.PathLength = length;
         }
 
-        private List<Node> GetNeighbors(GridMap grid, Node node, Dictionary<Vector2Int, Node> allNodes)
+        private static void FinishTiming(Stopwatch sw, CorePathfindingResult result)
         {
-            List<Node> neighbors = new List<Node>();
-
-            for (int x = -1; x <= 1; x++)
-            {
-                for (int y = -1; y <= 1; y++)
-                {
-                    if (x == 0 && y == 0) continue;
-
-                    int checkX = node.X + x;
-                    int checkY = node.Y + y;
-
-                    if (grid.IsValidCoordinate(checkX, checkY))
-                    {
-                        if (x != 0 && y != 0)
-                        {
-                            if (!grid.IsWalkable(node.X + x, node.Y) || !grid.IsWalkable(node.X, node.Y + y))
-                            {
-                                continue;
-                            }
-                        }
-
-                        Vector2Int pos = new Vector2Int(checkX, checkY);
-                        if (!allNodes.TryGetValue(pos, out Node neighborNode))
-                        {
-                            neighborNode = new Node(checkX, checkY) { GCost = int.MaxValue };
-                            allNodes[pos] = neighborNode;
-                        }
-                        neighbors.Add(neighborNode);
-                    }
-                }
-            }
-            return neighbors;
-        }
-
-        private int GetDistance(Node nodeA, Node nodeB)
-        {
-            int dstX = Math.Abs(nodeA.X - nodeB.X);
-            int dstY = Math.Abs(nodeA.Y - nodeB.Y);
-
-            if (dstX > dstY)
-                return 14 * dstY + 10 * (dstX - dstY);
-            return 14 * dstX + 10 * (dstY - dstX);
+            sw.Stop();
+            result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
+            result.ExecutionTicks = sw.ElapsedTicks;
         }
     }
 }

@@ -7,7 +7,7 @@ namespace Pathfinding.Benchmark
 {
     /// <summary>
     /// Ruchoma przeszkoda poruszająca się losowym spacerem (DS1).
-    /// Trasa: RandomWalk 1-3 kroków w 8 kierunkach, ping-pong.
+    /// Trasa: konfigurowalny RandomWalk w 8 kierunkach, ping-pong.
     /// Przeszkoda zajmuje 1 pole i BLOKUJE je (SetWalkable = false).
     /// </summary>
     public class MovingObstacle
@@ -22,14 +22,17 @@ namespace Pathfinding.Benchmark
         /// Zapobiega "naprawianiu" oryginalnych ścian na walkable.
         /// </summary>
         private Dictionary<Vector2Int, bool> _originalWalkableState;
+        private int _startDelayTicks;
 
-        public MovingObstacle(List<Vector2Int> patrolRoute, int startIndex = 0)
+        public MovingObstacle(
+            List<Vector2Int> patrolRoute, int startIndex = 0, int startDelayTicks = 0)
         {
             if (patrolRoute == null || patrolRoute.Count < 2)
                 throw new ArgumentException("Trasa patrol musi mieć min. 2 waypoint.");
             PatrolRoute = patrolRoute;
             CurrentWaypointIndex = startIndex % patrolRoute.Count;
             _originalWalkableState = new Dictionary<Vector2Int, bool>();
+            _startDelayTicks = Mathf.Max(0, startDelayTicks);
         }
 
         /// <summary>
@@ -53,9 +56,21 @@ namespace Pathfinding.Benchmark
         /// Stara pozycja → przywrócony ORYGINALNY stan (nie zawsze walkable!).
         /// Nowa pozycja → zablokowana (false).
         /// </summary>
-        public void Step(GridMap grid)
+        public void Step(GridMap grid, Vector2Int? occupiedByAgent = null)
         {
+            if (_startDelayTicks > 0)
+            {
+                _startDelayTicks--;
+                return;
+            }
+
             Vector2Int oldPos = CurrentPosition;
+            int nextWaypointIndex = (CurrentWaypointIndex + 1) % PatrolRoute.Count;
+
+            // Ruchoma przeszkoda nie może wejść na pole zajmowane przez agenta.
+            // W takim ticku pozostaje na swoim aktualnym waypointcie.
+            if (occupiedByAgent.HasValue && PatrolRoute[nextWaypointIndex] == occupiedByAgent.Value)
+                return;
 
             // Przywróć ORYGINALNY stan starej pozycji (nie ślepo ustawiaj na true!)
             if (_originalWalkableState.TryGetValue(oldPos, out bool wasWalkable))
@@ -64,7 +79,7 @@ namespace Pathfinding.Benchmark
                 grid.SetWalkable(oldPos, true);
 
             // Przesuń
-            CurrentWaypointIndex = (CurrentWaypointIndex + 1) % PatrolRoute.Count;
+            CurrentWaypointIndex = nextWaypointIndex;
 
             // Zablokuj nową pozycję
             grid.SetWalkable(CurrentPosition, false);
@@ -72,8 +87,20 @@ namespace Pathfinding.Benchmark
 
         public Vector2Int PredictPosition(int stepsAhead)
         {
-            int futureIndex = (CurrentWaypointIndex + stepsAhead) % PatrolRoute.Count;
+            int movementSteps = Mathf.Max(0, stepsAhead - _startDelayTicks);
+            int futureIndex = (CurrentWaypointIndex + movementSteps) % PatrolRoute.Count;
             return PatrolRoute[futureIndex];
+        }
+
+        internal MovingObstacle CloneInitial()
+        {
+            var clone = new MovingObstacle(
+                new List<Vector2Int>(PatrolRoute),
+                CurrentWaypointIndex,
+                _startDelayTicks);
+            clone._originalWalkableState =
+                new Dictionary<Vector2Int, bool>(_originalWalkableState);
+            return clone;
         }
 
         /// <summary>
@@ -89,9 +116,9 @@ namespace Pathfinding.Benchmark
     }
 
     /// <summary>
-    /// Manager scenariusza DS1 — ruchome przeszkody (RandomWalk 1-3 kroków).
+    /// Manager scenariusza DS1 — ruchome przeszkody na trasach RandomWalk.
     /// 
-    /// Każda przeszkoda robi losowy spacer po 8 kierunkach, 1-3 pola,
+    /// Każda przeszkoda robi losowy spacer po 8 kierunkach,
     /// a potem wraca tą samą drogą (ping-pong). Ruch deterministyczny (seed).
     /// 
     /// WAŻNE: Przeszkoda BLOKUJE pole na GridMap (SetWalkable = false).
@@ -110,27 +137,70 @@ namespace Pathfinding.Benchmark
             _obstacles = new List<MovingObstacle>();
         }
 
+        public MovingObstacleManager CloneInitialForGrid(GridMap grid)
+        {
+            MovingObstacleManager clone = CloneInitial();
+            foreach (MovingObstacle obstacle in clone._obstacles)
+                obstacle.PlaceOnGrid(grid);
+            return clone;
+        }
+
+        public MovingObstacleManager CloneInitial()
+        {
+            var clone = new MovingObstacleManager(0);
+            foreach (MovingObstacle obstacle in _obstacles)
+                clone._obstacles.Add(obstacle.CloneInitial());
+            return clone;
+        }
+
         /// <summary>
-        /// Generuje K ruchomych przeszkód z trasą RandomWalk (1-3 kroków).
+        /// Generuje K ruchomych przeszkód z konfigurowalną trasą RandomWalk.
         /// </summary>
         public void GenerateObstacles(GridMap grid, int count, Vector2Int start,
-            Vector2Int target, int patrolLength = 6)
+            Vector2Int target, int patrolLength = 6, bool logResult = true,
+            IReadOnlyList<Vector2Int> preferredCrossingCells = null)
         {
             _obstacles.Clear();
             int attempts = 0;
             int maxAttempts = count * 50;
             var occupiedPatrolCells = new HashSet<Vector2Int>();
 
-            // Clampuj patrol length do 1-3
-            patrolLength = Mathf.Clamp(patrolLength, 1, 3);
+            patrolLength = Mathf.Clamp(patrolLength, 1,
+                Mathf.Max(1, Mathf.Min(20, Mathf.Min(grid.Width, grid.Height) - 4)));
 
             while (_obstacles.Count < count && attempts < maxAttempts)
             {
                 attempts++;
-                var route = BuildRandomWalkRoute(grid, start, target, patrolLength);
+                IReadOnlyList<Vector2Int> crossingWindow = BuildCrossingWindow(
+                    preferredCrossingCells, _obstacles.Count, count);
+                var route = BuildRandomWalkRoute(grid, start, target, patrolLength,
+                    crossingWindow);
                 if (route != null && route.Count >= 2 && IsRouteFree(route, occupiedPatrolCells))
                 {
-                    var obstacle = new MovingObstacle(route);
+                    int startIndex = 0;
+                    int startDelay = 0;
+                    if (preferredCrossingCells != null && preferredCrossingCells.Count > 0)
+                    {
+                        if (!TryFindScheduledCrossing(
+                                route, preferredCrossingCells, _obstacles.Count, count,
+                                out int crossingRouteIndex, out int crossingReferenceIndex))
+                            continue;
+
+                        startIndex = FindInitialWaypointAwayFromReference(
+                            route, preferredCrossingCells);
+                        if (startIndex < 0)
+                            continue;
+
+                        int stepsToCrossing =
+                            (crossingRouteIndex - startIndex + route.Count) % route.Count;
+                        if (stepsToCrossing == 0)
+                            stepsToCrossing = route.Count;
+
+                        int expectedAgentStep = crossingReferenceIndex + 1;
+                        startDelay = Mathf.Max(0, expectedAgentStep - stepsToCrossing);
+                    }
+
+                    var obstacle = new MovingObstacle(route, startIndex, startDelay);
                     obstacle.PlaceOnGrid(grid);
                     _obstacles.Add(obstacle);
 
@@ -142,21 +212,126 @@ namespace Pathfinding.Benchmark
             // Weryfikacja: upewnij się, że wszystkie przeszkody BLOKUJĄ swoje pola
             VerifyObstaclePositions(grid);
 
-            Debug.Log($"[DS1] Wygenerowano {_obstacles.Count}/{count} ruchomych przeszkód " +
-                      $"(patrol: {patrolLength} kroków, seed: próby={attempts})");
+            if (logResult)
+            {
+                Debug.Log($"[DS1] Wygenerowano {_obstacles.Count}/{count} ruchomych przeszkód " +
+                          $"(patrol: {patrolLength} kroków, seed: próby={attempts})");
+            }
+
+            if (logResult && _obstacles.Count < count)
+            {
+                Debug.LogWarning($"[DS1] Nie udało się wygenerować wymaganej liczby przeszkód: " +
+                                 $"{_obstacles.Count}/{count}. Mapa ma zbyt mało rozłącznych tras patrolowych.");
+            }
+        }
+
+        private IReadOnlyList<Vector2Int> BuildCrossingWindow(
+            IReadOnlyList<Vector2Int> referencePath, int obstacleIndex, int obstacleCount)
+        {
+            if (referencePath == null || referencePath.Count == 0)
+                return referencePath;
+
+            // Rozkładamy przecięcia wzdłuż całej trasy zamiast losować je
+            // wszystkie z tego samego fragmentu. Małe okno zachowuje deterministyczne
+            // zróżnicowanie przy ponawianiu prób generacji.
+            float progress = (obstacleIndex + 1f) / (obstacleCount + 1f);
+            int center = Mathf.RoundToInt(progress * (referencePath.Count - 1));
+            int radius = Mathf.Max(1, referencePath.Count / Mathf.Max(8, obstacleCount * 4));
+            int from = Mathf.Max(0, center - radius);
+            int to = Mathf.Min(referencePath.Count - 1, center + radius);
+
+            var window = new List<Vector2Int>(to - from + 1);
+            for (int i = from; i <= to; i++)
+                window.Add(referencePath[i]);
+            return window;
+        }
+
+        private int FindInitialWaypointAwayFromReference(
+            List<Vector2Int> route, IReadOnlyList<Vector2Int> referencePath)
+        {
+            if (referencePath == null || referencePath.Count == 0)
+                return 0;
+
+            var referenceCells = new HashSet<Vector2Int>(referencePath);
+            int bestIndex = -1;
+            int bestDistance = -1;
+
+            for (int i = 0; i < route.Count; i++)
+            {
+                if (referenceCells.Contains(route[i]))
+                    continue;
+
+                int nearestDistance = int.MaxValue;
+                foreach (Vector2Int referenceCell in referencePath)
+                {
+                    int distance = Mathf.Max(
+                        Math.Abs(route[i].x - referenceCell.x),
+                        Math.Abs(route[i].y - referenceCell.y));
+                    nearestDistance = Math.Min(nearestDistance, distance);
+                }
+
+                if (nearestDistance > bestDistance)
+                {
+                    bestDistance = nearestDistance;
+                    bestIndex = i;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        private bool TryFindScheduledCrossing(
+            List<Vector2Int> route,
+            IReadOnlyList<Vector2Int> referencePath,
+            int obstacleIndex,
+            int obstacleCount,
+            out int routeIndex,
+            out int referenceIndex)
+        {
+            routeIndex = -1;
+            referenceIndex = -1;
+            if (referencePath == null || referencePath.Count == 0)
+                return false;
+
+            float progress = (obstacleIndex + 1f) / (obstacleCount + 1f);
+            int desiredReferenceIndex = Mathf.RoundToInt(
+                progress * (referencePath.Count - 1));
+            int bestDifference = int.MaxValue;
+
+            for (int routeCandidate = 0; routeCandidate < route.Count; routeCandidate++)
+            {
+                for (int referenceCandidate = 0;
+                     referenceCandidate < referencePath.Count;
+                     referenceCandidate++)
+                {
+                    if (route[routeCandidate] != referencePath[referenceCandidate])
+                        continue;
+
+                    int difference = Math.Abs(referenceCandidate - desiredReferenceIndex);
+                    if (difference >= bestDifference)
+                        continue;
+
+                    bestDifference = difference;
+                    routeIndex = routeCandidate;
+                    referenceIndex = referenceCandidate;
+                }
+            }
+
+            return routeIndex >= 0;
         }
 
         /// <summary>
         /// Przesuwa wszystkie przeszkody o jeden krok.
         /// Zwraca listę par (staraPozycja, nowaPozycja) do płynnej wizualizacji.
         /// </summary>
-        public List<(Vector2Int oldPos, Vector2Int newPos)> StepAll(GridMap grid)
+        public List<(Vector2Int oldPos, Vector2Int newPos)> StepAll(
+            GridMap grid, Vector2Int? occupiedByAgent = null)
         {
             var moves = new List<(Vector2Int oldPos, Vector2Int newPos)>(_obstacles.Count);
             foreach (var obs in _obstacles)
             {
                 Vector2Int oldPos = obs.CurrentPosition;
-                obs.Step(grid);
+                obs.Step(grid, occupiedByAgent);
                 moves.Add((oldPos, obs.CurrentPosition));
             }
 
@@ -164,6 +339,20 @@ namespace Pathfinding.Benchmark
             VerifyObstaclePositions(grid);
 
             return moves;
+        }
+
+        /// <summary>
+        /// Wariant bez historii ruchów używany przez benchmark headless. Stan mapy
+        /// i przeszkód jest identyczny jak po StepAll, ale nie powstaje lista alokowana
+        /// w każdym ticku symulacji.
+        /// </summary>
+        public void StepAllWithoutTracking(
+            GridMap grid, Vector2Int? occupiedByAgent = null)
+        {
+            foreach (MovingObstacle obstacle in _obstacles)
+                obstacle.Step(grid, occupiedByAgent);
+
+            VerifyObstaclePositions(grid);
         }
 
         /// <summary>
@@ -227,15 +416,15 @@ namespace Pathfinding.Benchmark
                 obs.RemoveFromGrid(grid);
         }
 
-        // ─── Generacja trasy: RandomWalk 1-3 kroków ───
+        // ─── Generacja trasy RandomWalk ───
 
         /// <summary>
-        /// Buduje trasę RandomWalk: losowy spacer po 8 kierunkach, 1-3 pola.
+        /// Buduje trasę RandomWalk: losowy spacer po 8 kierunkach.
         /// Trasa = forward path + reverse path (ping-pong).
         /// Deterministyczny z seed RNG.
         /// </summary>
         private List<Vector2Int> BuildRandomWalkRoute(GridMap grid, Vector2Int start,
-            Vector2Int target, int length)
+            Vector2Int target, int length, IReadOnlyList<Vector2Int> preferredCrossingCells)
         {
             int maxTries = 30;
 
@@ -247,8 +436,19 @@ namespace Pathfinding.Benchmark
 
             for (int t = 0; t < maxTries; t++)
             {
-                int originX = _rng.Next(2, grid.Width - 2);
-                int originY = _rng.Next(2, grid.Height - 2);
+                int originX;
+                int originY;
+                if (preferredCrossingCells != null && preferredCrossingCells.Count > 0)
+                {
+                    Vector2Int preferred = preferredCrossingCells[_rng.Next(preferredCrossingCells.Count)];
+                    originX = preferred.x;
+                    originY = preferred.y;
+                }
+                else
+                {
+                    originX = _rng.Next(2, grid.Width - 2);
+                    originY = _rng.Next(2, grid.Height - 2);
+                }
 
                 if (!grid.IsWalkable(originX, originY)) continue;
 

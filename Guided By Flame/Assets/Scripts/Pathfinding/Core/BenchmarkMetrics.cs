@@ -37,6 +37,7 @@ namespace Pathfinding.Core
         public int ExploredNodes { get; set; }
         public int JumpScannedCells { get; set; }
         public float PathLength { get; set; }
+        public int PathCost { get; set; }
         public int DirectionChanges { get; set; }
         public float PathSmoothness { get; set; }
         public int PathRecalculations { get; set; }
@@ -88,6 +89,7 @@ namespace Pathfinding.Core
             ExploredNodes = coldResult.ExploredNodes;
             JumpScannedCells = coldResult.JumpScannedCells;
             PathLength = coldResult.PathLength;
+            PathCost = coldResult.PathCost;
             DirectionChanges = coldResult.DirectionChanges;
             PathSmoothness = coldResult.PathSmoothness;
             PathRecalculations = coldResult.PathRecalculations;
@@ -150,7 +152,7 @@ namespace Pathfinding.Core
                    "PathFound;ColdStartTimeMs;ColdStartTicks;ColdStartGCAllocBytes;" +
                    "AvgExecutionTimeMs;MinExecutionTimeMs;MaxExecutionTimeMs;StdDevExecutionTimeMs;" +
                    "AvgExecutionTicks;AvgGCAllocBytes;" +
-                   "ExploredNodes;JumpScannedCells;PathLength;DirectionChanges;PathSmoothness;PathRecalculations;CPUTemperature";
+                   "ExploredNodes;JumpScannedCells;PathLength;PathCost10_14;DirectionChanges;PathSmoothness;PathRecalculations;CPUTemperature";
         }
 
         /// <summary>
@@ -164,14 +166,14 @@ namespace Pathfinding.Core
                 "{0};{1};{2};{3};{4};{5};{6};{7:F2};" +
                 "{8};{9};{10:F2};{11};{12};{13};{14:F3};{15:F3};{16:F3};" +
                 "{17};{18:F6};{19};{20};{21:F6};{22:F6};{23:F6};{24:F6};" +
-                "{25:F2};{26:F2};{27};{28};{29:F4};{30};{31:F6};{32};{33:F1}",
+                "{25:F2};{26:F2};{27};{28};{29:F4};{30};{31};{32:F6};{33};{34:F1}",
                 TestID, AlgorithmName, StartX, StartY, TargetX, TargetY, Scenario, ObstacleDensity,
                 MapTopology, MapSeed, MapDensity, MapWidth, MapHeight, DistanceBucket,
                 EuclideanDistance, OctagonalDistance, ReferenceShortestPathLength, PathFound, ColdStartTimeMs,
                 ColdStartTicks, ColdStartGCAllocBytes, AvgExecutionTimeMs, MinExecutionTimeMs,
                 MaxExecutionTimeMs, StdDevExecutionTimeMs, AvgExecutionTicks, AvgGCAllocBytes,
-                ExploredNodes, JumpScannedCells, PathLength, DirectionChanges, PathSmoothness,
-                PathRecalculations, CPUTemperature);
+                ExploredNodes, JumpScannedCells, PathLength, PathCost, DirectionChanges,
+                PathSmoothness, PathRecalculations, CPUTemperature);
         }
     }
 }

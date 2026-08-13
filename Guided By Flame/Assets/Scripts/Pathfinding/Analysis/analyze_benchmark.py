@@ -128,6 +128,7 @@ class BenchmarkRow:
     explored_nodes: float
     jump_scanned_cells: float
     path_length: float
+    path_cost_10_14: float
     direction_changes: float
     path_smoothness: float
     replans: float
@@ -140,6 +141,10 @@ class BenchmarkRow:
 
     @property
     def path_ratio(self) -> float | None:
+        # Statyczna referencja prowadzi do pierwotnej pozycji celu i nie jest
+        # poprawnym mianownikiem jakości dla scenariusza z uciekającym celem.
+        if self.scenario == "DS3_EscapingTarget":
+            return None
         if not self.path_found or self.reference_length <= 0 or self.path_length <= 0:
             return None
         return self.path_length / self.reference_length
@@ -211,6 +216,7 @@ def load_rows(csv_path: Path) -> tuple[list[BenchmarkRow], int]:
                     explored_nodes=safe_float(raw.get("ExploredNodes", "")),
                     jump_scanned_cells=safe_float(raw.get("JumpScannedCells", "")),
                     path_length=safe_float(raw.get("PathLength", "")),
+                    path_cost_10_14=safe_float(raw.get("PathCost10_14", "")),
                     direction_changes=safe_float(raw.get("DirectionChanges", "")),
                     path_smoothness=safe_float(raw.get("PathSmoothness", "")),
                     replans=safe_float(raw.get("PathRecalculations", "")),
@@ -310,6 +316,7 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
             if not group:
                 continue
             path_ratios = [r.path_ratio for r in group if r.path_ratio is not None]
+            completed_replans = [r.replans for r in group if r.path_found]
             summary_rows.append(
                 [
                     scenario,
@@ -321,7 +328,10 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
                     f"{percentile((r.avg_ms for r in group), 95):.6f}",
                     f"{mean(r.cold_start_ms for r in group):.6f}",
                     f"{mean(r.explored_nodes for r in group):.3f}",
-                    f"{mean(r.replans for r in group):.3f}",
+                    f"{mean(completed_replans):.3f}",
+                    f"{median(completed_replans):.3f}",
+                    f"{percentile(completed_replans, 95):.3f}",
+                    f"{percentile(completed_replans, 99):.3f}",
                     f"{mean(path_ratios):.6f}",
                     f"{mean(r.cpu_temp for r in group):.3f}",
                 ]
@@ -339,7 +349,10 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
             "AvgExecutionTimeMsP95",
             "ColdStartTimeMsMean",
             "ExploredNodesMean",
-            "PathRecalculationsMean",
+            "PathRecalculationsCompletedMean",
+            "PathRecalculationsCompletedMedian",
+            "PathRecalculationsCompletedP95",
+            "PathRecalculationsCompletedP99",
             "PathLengthToReferenceMean",
             "CPUTemperatureMean",
         ],
@@ -350,6 +363,7 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
     grouped_map = group_rows(rows, lambda r: (r.map_width, r.topology, r.map_density, r.scenario, r.algorithm))
     for key in sorted(grouped_map.keys()):
         group = grouped_map[key]
+        completed_replans = [r.replans for r in group if r.path_found]
         map_rows.append(
             [
                 key[0],
@@ -358,10 +372,14 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
                 key[3],
                 key[4],
                 len(group),
+                f"{100.0 * sum(r.path_found for r in group) / len(group):.3f}",
                 f"{mean(r.avg_ms for r in group):.6f}",
                 f"{percentile((r.avg_ms for r in group), 95):.6f}",
                 f"{mean(r.explored_nodes for r in group):.3f}",
-                f"{mean(r.replans for r in group):.3f}",
+                f"{mean(completed_replans):.3f}",
+                f"{median(completed_replans):.3f}",
+                f"{percentile(completed_replans, 95):.3f}",
+                f"{percentile(completed_replans, 99):.3f}",
             ]
         )
     write_csv(
@@ -373,10 +391,14 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
             "Scenario",
             "Algorithm",
             "Rows",
+            "PathFoundPercent",
             "AvgExecutionTimeMsMean",
             "AvgExecutionTimeMsP95",
             "ExploredNodesMean",
-            "PathRecalculationsMean",
+            "PathRecalculationsCompletedMean",
+            "PathRecalculationsCompletedMedian",
+            "PathRecalculationsCompletedP95",
+            "PathRecalculationsCompletedP99",
         ],
         map_rows,
     )
@@ -593,6 +615,7 @@ def plot_path_quality(rows: list[BenchmarkRow], output_dir: Path) -> None:
         "Jakość ścieżki według typu mapy",
         "Długość ścieżki / długość referencyjna",
         "04_path_quality_by_topology",
+        scenarios=["Static", "DS1_MovingObstacles", "DS2_PathObstruction"],
         log_scale=False,
         reference_line=1.0,
     )
@@ -626,6 +649,7 @@ def plot_path_costs(rows: list[BenchmarkRow], output_dir: Path) -> None:
         "Nadmiarowy koszt ścieżki według typu mapy",
         "Nadmiarowy koszt [%]",
         "18_excess_path_cost_by_topology",
+        scenarios=["Static", "DS1_MovingObstacles", "DS2_PathObstruction"],
         log_scale=False,
         reference_line=0.0,
     )
@@ -635,12 +659,26 @@ def plot_replanning(rows: list[BenchmarkRow], output_dir: Path) -> None:
     plot_topology_bars_for_map_variants(
         rows,
         output_dir,
-        lambda row: row.replans,
-        "Ponowne wyznaczanie ścieżki według typu mapy",
-        "Średnia liczba ponownych wyznaczeń ścieżki",
+        lambda row: row.replans if row.path_found else None,
+        "Ponowne wyznaczanie ścieżki w ukończonych przebiegach",
+        "Średnia liczba ponownych wyznaczeń (ukończone przebiegi)",
         "05_dynamic_replanning_by_topology",
         scenarios=DYNAMIC_SCENARIOS,
         log_scale=False,
+    )
+
+
+def plot_dynamic_completion_rate(rows: list[BenchmarkRow], output_dir: Path) -> None:
+    plot_topology_bars_for_map_variants(
+        rows,
+        output_dir,
+        lambda row: 100.0 if row.path_found else 0.0,
+        "Odsetek ukończonych przebiegów dynamicznych według typu mapy",
+        "Ukończone przebiegi [%]",
+        "19_dynamic_completion_rate_by_topology",
+        scenarios=DYNAMIC_SCENARIOS,
+        log_scale=False,
+        reference_line=100.0,
     )
 
 
@@ -714,8 +752,9 @@ def plot_gc_allocation_figures(rows: list[BenchmarkRow], output_dir: Path) -> No
 
 
 def plot_efficiency_tradeoff(rows: list[BenchmarkRow], output_dir: Path) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.7), sharey=True)
-    for ax, scenario in zip(axes, DYNAMIC_SCENARIOS):
+    comparable_scenarios = ["DS1_MovingObstacles", "DS2_PathObstruction"]
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.7), sharey=True)
+    for ax, scenario in zip(axes, comparable_scenarios):
         for algorithm in ALGORITHMS:
             subset = [r for r in rows if r.scenario == scenario and r.algorithm == algorithm and r.path_ratio is not None]
             ax.scatter(
@@ -831,6 +870,7 @@ def plot_all(rows: list[BenchmarkRow], output_dir: Path) -> None:
     plot_path_quality(rows, output_dir)
     plot_path_costs(rows, output_dir)
     plot_replanning(rows, output_dir)
+    plot_dynamic_completion_rate(rows, output_dir)
     plot_path_found_heatmap(rows, output_dir)
     plot_temperature(rows, output_dir)
     plot_cold_vs_warm(rows, output_dir)

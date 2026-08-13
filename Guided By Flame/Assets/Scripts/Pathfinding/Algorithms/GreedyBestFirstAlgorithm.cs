@@ -1,8 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 using Pathfinding.Core;
-using System;
+using CorePathfindingResult = Pathfinding.Core.PathfindingResult;
 
 namespace Pathfinding.Algorithms
 {
@@ -10,169 +11,149 @@ namespace Pathfinding.Algorithms
     {
         public string AlgorithmName => "GreedyBestFirst";
 
-        private class Node : IHeapItem<Node>
+        private sealed class Node : IHeapItem<Node>
         {
-            public int X { get; }
-            public int Y { get; }
-            public int HCost { get; set; }
-            public Node Parent { get; set; }
-            
-            private int _heapIndex;
+            public readonly int X;
+            public readonly int Y;
+            public int HCost;
+            public Node Parent;
+            public bool Closed;
+            public int SearchId;
+            public int HeapIndex { get; set; } = -1;
 
-            public Node(int x, int y)
-            {
-                X = x;
-                Y = y;
-            }
-
-            public int HeapIndex
-            {
-                get => _heapIndex;
-                set => _heapIndex = value;
-            }
+            public Node(int x, int y) { X = x; Y = y; }
 
             public int CompareTo(Node other)
             {
-                // GBFS kieruje się w 100% heurystyką (odległością w prostej linii bez uwzględniania przeszkód w locie)
                 int compare = HCost.CompareTo(other.HCost);
-                // Deterministyczny tiebreak: przy równych kosztach rozstrzygaj pozycją.
-                // Gwarantuje identyczne wyniki niezależnie od kolejności wstawiania do kopca.
                 if (compare == 0)
                 {
-                    int posA = X * 10000 + Y;
-                    int posB = other.X * 10000 + other.Y;
-                    compare = posA.CompareTo(posB);
+                    compare = X.CompareTo(other.X);
+                    if (compare == 0) compare = Y.CompareTo(other.Y);
                 }
-                return -compare; // MinHeap
+                return -compare;
             }
         }
 
-        public Pathfinding.Core.PathfindingResult FindPath(GridMap grid, Vector2Int startPos, Vector2Int targetPos)
+        private Node[,] _nodes;
+        private MinHeap<Node> _openSet;
+        private int _width;
+        private int _height;
+        private int _searchId;
+
+        public CorePathfindingResult FindPath(
+            GridMap grid, Vector2Int startPos, Vector2Int targetPos)
         {
-            var result = new Pathfinding.Core.PathfindingResult();
+            EnsureWorkspace(grid.Width, grid.Height);
+            BeginSearch();
+            var result = new CorePathfindingResult();
             Stopwatch sw = Stopwatch.StartNew();
+            Node startNode = GetNode(startPos.x, startPos.y);
+            _openSet.Add(startNode);
 
-            Node startNode = new Node(startPos.x, startPos.y);
-            Node targetNode = new Node(targetPos.x, targetPos.y);
-
-            MinHeap<Node> openSet = new MinHeap<Node>(grid.Width * grid.Height);
-            HashSet<Vector2Int> closedSet = new HashSet<Vector2Int>();
-            Dictionary<Vector2Int, Node> allNodes = new Dictionary<Vector2Int, Node>();
-            
-            allNodes[startPos] = startNode;
-            openSet.Add(startNode);
-
-            while (openSet.Count > 0)
+            while (_openSet.Count > 0)
             {
-                Node currentNode = openSet.RemoveFirst();
-                Vector2Int currentPos = new Vector2Int(currentNode.X, currentNode.Y);
-                closedSet.Add(currentPos);
+                Node current = _openSet.RemoveFirst();
+                current.Closed = true;
+                var currentPos = new Vector2Int(current.X, current.Y);
                 result.ExploredNodes++;
                 if (PathfindingRuntimeOptions.RecordExploredNodesHistory)
                     result.ExploredNodesHistory.Add(currentPos);
 
-                if (currentPos == targetPos)
+                if (current.X == targetPos.x && current.Y == targetPos.y)
                 {
                     result.PathFound = true;
-                    RetracePath(startNode, currentNode, result);
-                    sw.Stop();
-                    result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
-                    result.ExecutionTicks = sw.ElapsedTicks;
+                    RetracePath(startNode, current, result);
+                    FinishTiming(sw, result);
                     return result;
                 }
 
-                foreach (Node neighbor in GetNeighbors(grid, currentNode, allNodes))
+                for (int dx = -1; dx <= 1; dx++)
                 {
-                    Vector2Int neighborPos = new Vector2Int(neighbor.X, neighbor.Y);
-                    
-                    if (!grid.IsWalkable(neighborPos) || closedSet.Contains(neighborPos))
-                        continue;
-
-                    bool inOpenSet = openSet.Contains(neighbor);
-                    
-                    if (!inOpenSet)
+                    for (int dy = -1; dy <= 1; dy++)
                     {
-                        // Koszt to wyłącznie heurystyka, dlatego gCost nie istnieje w klasie Node w ogóle
-                        neighbor.HCost = GetOctagonalDistance(neighbor, targetNode);
-                        neighbor.Parent = currentNode;
-                        openSet.Add(neighbor);
+                        if (dx == 0 && dy == 0) continue;
+                        int x = current.X + dx;
+                        int y = current.Y + dy;
+                        if (!grid.IsValidCoordinate(x, y)) continue;
+                        if (dx != 0 && dy != 0 &&
+                            (!grid.IsWalkable(current.X + dx, current.Y) ||
+                             !grid.IsWalkable(current.X, current.Y + dy)))
+                            continue;
+                        if (!grid.IsWalkable(x, y)) continue;
+
+                        Node neighbor = GetNode(x, y);
+                        if (neighbor.Closed || _openSet.Contains(neighbor)) continue;
+                        neighbor.HCost = OctagonalDistance(x, y, targetPos.x, targetPos.y);
+                        neighbor.Parent = current;
+                        _openSet.Add(neighbor);
                     }
                 }
             }
 
-            sw.Stop();
-            result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
-            result.ExecutionTicks = sw.ElapsedTicks;
+            FinishTiming(sw, result);
             return result;
         }
 
-        private void RetracePath(Node startNode, Node endNode, Pathfinding.Core.PathfindingResult result)
+        private void EnsureWorkspace(int width, int height)
         {
-            List<Vector2Int> path = new List<Vector2Int>();
-            Node currentNode = endNode;
-            float length = 0;
-
-            while (currentNode != startNode)
-            {
-                path.Add(new Vector2Int(currentNode.X, currentNode.Y));
-                
-                if (currentNode.X != currentNode.Parent.X && currentNode.Y != currentNode.Parent.Y)
-                    length += 1.414f;
-                else
-                    length += 1.0f;
-                    
-                currentNode = currentNode.Parent;
-            }
-            
-            path.Reverse();
-            result.Path = path;
-            result.PathLength = length;
+            if (_nodes != null && _width == width && _height == height) return;
+            _width = width; _height = height;
+            _nodes = new Node[width, height];
+            for (int x = 0; x < width; x++)
+                for (int y = 0; y < height; y++) _nodes[x, y] = new Node(x, y);
+            _openSet = new MinHeap<Node>(width * height);
+            _searchId = 0;
         }
 
-        private List<Node> GetNeighbors(GridMap grid, Node node, Dictionary<Vector2Int, Node> allNodes)
+        private void BeginSearch()
         {
-            List<Node> neighbors = new List<Node>();
-
-            for (int x = -1; x <= 1; x++)
+            _openSet.Clear();
+            if (_searchId == int.MaxValue)
             {
-                for (int y = -1; y <= 1; y++)
-                {
-                    if (x == 0 && y == 0) continue;
-
-                    int checkX = node.X + x;
-                    int checkY = node.Y + y;
-
-                    if (grid.IsValidCoordinate(checkX, checkY))
-                    {
-                        if (x != 0 && y != 0)
-                        {
-                            if (!grid.IsWalkable(node.X + x, node.Y) || !grid.IsWalkable(node.X, node.Y + y))
-                            {
-                                continue;
-                            }
-                        }
-
-                        Vector2Int pos = new Vector2Int(checkX, checkY);
-                        if (!allNodes.TryGetValue(pos, out Node neighborNode))
-                        {
-                            neighborNode = new Node(checkX, checkY);
-                            allNodes[pos] = neighborNode;
-                        }
-                        neighbors.Add(neighborNode);
-                    }
-                }
+                for (int x = 0; x < _width; x++)
+                    for (int y = 0; y < _height; y++) _nodes[x, y].SearchId = 0;
+                _searchId = 1;
             }
-            return neighbors;
+            else _searchId++;
         }
 
-        private int GetOctagonalDistance(Node nodeA, Node nodeB)
+        private Node GetNode(int x, int y)
         {
-            int dstX = Math.Abs(nodeA.X - nodeB.X);
-            int dstY = Math.Abs(nodeA.Y - nodeB.Y);
+            Node node = _nodes[x, y];
+            if (node.SearchId != _searchId)
+            {
+                node.SearchId = _searchId;
+                node.HCost = 0;
+                node.Parent = null;
+                node.Closed = false;
+                node.HeapIndex = -1;
+            }
+            return node;
+        }
 
-            if (dstX > dstY)
-                return 14 * dstY + 10 * (dstX - dstY);
-            return 14 * dstX + 10 * (dstY - dstX);
+        private static void RetracePath(Node start, Node end, CorePathfindingResult result)
+        {
+            var path = new List<Vector2Int>();
+            float length = 0f;
+            for (Node node = end; node != start; node = node.Parent)
+            {
+                path.Add(new Vector2Int(node.X, node.Y));
+                length += node.X != node.Parent.X && node.Y != node.Parent.Y ? 1.414f : 1f;
+            }
+            path.Reverse(); result.Path = path; result.PathLength = length;
+        }
+
+        private static int OctagonalDistance(int ax, int ay, int bx, int by)
+        {
+            int dx = Math.Abs(ax - bx), dy = Math.Abs(ay - by);
+            return dx > dy ? 14 * dy + 10 * (dx - dy) : 14 * dx + 10 * (dy - dx);
+        }
+
+        private static void FinishTiming(Stopwatch sw, CorePathfindingResult result)
+        {
+            sw.Stop(); result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
+            result.ExecutionTicks = sw.ElapsedTicks;
         }
     }
 }

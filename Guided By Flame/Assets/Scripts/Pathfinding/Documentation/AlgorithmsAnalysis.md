@@ -488,6 +488,7 @@ Benchmark zapisuje do CSV między innymi:
 | `ExploredNodes` | Liczba węzłów faktycznie przetworzonych przez algorytm. |
 | `JumpScannedCells` | Liczba pól sprawdzonych wewnątrz procedury `Jump()` w JPS; dla innych algorytmów 0. |
 | `PathLength` | Długość znalezionej ścieżki w jednostkach geometrycznych. |
+| `PathCost10_14` | Dyskretny koszt faktycznie przebytej ścieżki: 10 za ruch ortogonalny i 14 za diagonalny. |
 | `DirectionChanges` | Liczba zmian kierunku na trasie. |
 | `PathSmoothness` | `DirectionChanges / PathLength`; im bliżej zera, tym gładsza ścieżka. |
 | `PathRecalculations` | Liczba wymuszonych rekalkulacji ścieżki w scenariuszach dynamicznych. |

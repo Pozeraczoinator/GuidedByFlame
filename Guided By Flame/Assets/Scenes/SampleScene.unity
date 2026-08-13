@@ -8233,26 +8233,26 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   benchmarkMode: 1
   autoStartBenchmark: 0
-  runWithoutVisualization: 0
-  runFullBenchmarkSuite: 0
+  runWithoutVisualization: 1
+  runFullBenchmarkSuite: 1
   scenario: 3
   randomSeed: 42
   selectedAlgorithm: 4
   mapFileName: Map3.txt
   testCasesFileName: TestCases.csv
-  benchmarkIterations: 30
-  outputFileName: benchmark_results.csv
-  monitorCPUTemperature: 0
-  headlessIterationsPerYield: 3
-  headlessRowsPerFlush: 1500
+  benchmarkIterations: 5
+  outputFileName: benchmark_results_5iter_ds1limits.csv
+  monitorCPUTemperature: 1
+  headlessIterationsPerYield: 15
+  headlessRowsPerFlush: 1000
   forceGcBeforeColdStart: 0
   stopBenchmarkKey: 27
   mapSource: 2
   proceduralMapWidth: 32
-  proceduralMapHeight: 32
+  proceduralMapHeight: 20
   useSuiteMapSizes: 1
   suiteMapSizes: 200000004000000080000000
-  proceduralDensity: 0.073
+  proceduralDensity: 0.25
   suiteDensities:
   - 0.1
   - 0.2
@@ -8262,10 +8262,12 @@ MonoBehaviour:
   includeFileMapInFullSuite: 0
   useDistanceBucketing: 1
   pairsPerBucket: 35
-  movingObstacleCount: 20
+  movingObstacleCount: 3
   patrolLength: 6
-  pathObstructionChanges: 6
-  pathObstructionSpacing: 4
+  maxDS1Replans: 120
+  maxDS1ConsecutiveFailedReplans: 20
+  pathObstructionChanges: 40
+  pathObstructionSpacing: 8
   maxTargetEscapes: 50
   runBatchGeneration: 0
   batchOutputDirectory: GeneratedMaps
