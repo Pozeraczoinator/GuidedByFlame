@@ -26,7 +26,7 @@ Pathfinding/
 ├── Benchmark/                     # Infrastruktura pomiarowa
 │   ├── MovingObstacleManager.cs   # DS1: patrol NPC (RandomWalk 1-3)
 │   ├── TestPointSelector.cs       # Bucketing po realnej długości ścieżki + deduplikacja
-│   ├── HardwareMonitor.cs         # Temp CPU (WMI), GC.Collect wrapper
+│   ├── HardwareMonitor.cs         # Asynchroniczny cache temperatury CPU
 │   └── BatchGenerator.cs          # 4×4×4 = 64 mapy
 │
 ├── MapGenerators/                 # Generatory map proceduralnych
@@ -42,7 +42,8 @@ Pathfinding/
 │
 ├── Documentation/                 # Dokumentacja kontekstowa
 │   ├── Architecture.md            # Ten plik
-│   └── AlgorithmsAnalysis.md      # Szczegółowa analiza algorytmów
+│   ├── AlgorithmsAnalysis.md      # Szczegółowa analiza algorytmów
+│   └── BenchmarkMethodologyChanges.md # Zmiany metodologii do uwzględnienia w pracy
 │
 └── PathfindingVisualizer.cs       # Oficjalny runner benchmarków + Unity MonoBehaviour z wizualizacją
 ```
@@ -95,7 +96,7 @@ Pathfinding/
 | `PathCost` | int | Dyskretny koszt faktycznej ścieżki: 10 ortogonalnie, 14 diagonalnie |
 | `ExecutionTimeMs` | double | Czas Stopwatch |
 | `ExecutionTicks` | long | CPU ticks Stopwatch |
-| `GCAllocBytes` | long | Delta GC.GetTotalMemory |
+| `GCAllocBytes` | long | Bajty zaalokowane na bieżącym wątku podczas operacji |
 | `DirectionChanges` | int | Zmiany kierunku na ścieżce |
 | `PathSmoothness` | float | DirectionChanges / PathLength |
 | `PathRecalculations` | int | Liczba rekalkulacji trasy w scenariuszach dynamicznych |
@@ -114,9 +115,9 @@ Pathfinding/
 | **Static** | Mapa niezmienna |
 | **DS1** | Ruchome przeszkody patrolowe (RandomWalk, ping-pong) |
 | **DS2** | Deterministyczny harmonogram dynamicznych blokad w korytarzu start-cel |
-| **DS3** | Expanding Hazard Zone: deterministyczne źródła zagrożenia rozszerzają się po mapie w trakcie ruchu agenta |
+| **DS3** | Uciekający cel: deterministyczny ruch celu o jedno pole po każdych dwóch krokach agenta |
 
-DS3 nie używa losowości runtime. Harmonogram źródeł i fal ekspansji powstaje przed pomiarem na podstawie `MapSeed + TestID + 8000`, bazowej siatki i referencyjnej ścieżki A\*. Dzięki temu każdy algorytm mierzy ten sam scenariusz dynamiczny.
+DS3 używa deterministycznego generatora pseudolosowego zależnego od mapy i pary start–cel. Lista legalnych kierunków jest sortowana przed losowaniem, dzięki czemu powtórzenie tego samego przypadku daje tę samą trajektorię celu.
 
 ---
 
@@ -136,7 +137,7 @@ DS3 nie używa losowości runtime. Harmonogram źródeł i fal ekspansji powstaj
 Od wersji `feature/pathfinding-audit-determinism`:
 
 1. **Deterministyczny tiebreak w MinHeap** — każdy algorytm rozstrzyga remisy
-   priorytetów za pomocą pozycji węzła (X * 10000 + Y), co gwarantuje
+   priorytetów kolejno za pomocą współrzędnych X i Y, co gwarantuje
    identyczne wyniki niezależnie od kolejności wstawiania do kopca.
 
 2. **Stała kolejność iteracji sąsiadów** — pętla `for(x=-1..1, y=-1..1)`
@@ -169,15 +170,15 @@ ExploredNodes;JumpScannedCells;PathLength;PathCost10_14;DirectionChanges;PathSmo
 
 | Parametr | Domyślna | Lokalizacja |
 |----------|----------|-------------|
-| `benchmarkIterations` | 30 | PathfindingVisualizer |
+| `benchmarkIterations` | 5 | PathfindingVisualizer |
 | `randomSeed` | 42 | PathfindingVisualizer |
 | `movingObstacleCount` | 3 | PathfindingVisualizer |
 | `patrolLength` | 6 | PathfindingVisualizer |
-| `pathObstructionChanges` | 12 | PathfindingVisualizer |
-| `hazardSourceCount` | 4 | PathfindingVisualizer |
-| `hazardExpansionInterval` | 3 | PathfindingVisualizer |
-| `hazardMaxCells` | 192 | PathfindingVisualizer |
-| `hazardInfluenceRadius` | 6 | PathfindingVisualizer |
-| `pairsPerBucket` | 30 | PathfindingVisualizer |
+| `maxDS1Replans` | 120 | PathfindingVisualizer |
+| `maxDS1ConsecutiveFailedReplans` | 20 | PathfindingVisualizer |
+| `pathObstructionChanges` | 40 | PathfindingVisualizer |
+| `pathObstructionSpacing` | 8 | PathfindingVisualizer |
+| `maxTargetEscapes` | 50 | PathfindingVisualizer |
+| `pairsPerBucket` | 35 | PathfindingVisualizer |
 | `_greedyWeight` | 50.0f | CustomGreedyAlgorithm (konstruktor) |
 | `_turnPenalty` | 2 | CustomGreedyAlgorithm (konstruktor) |
