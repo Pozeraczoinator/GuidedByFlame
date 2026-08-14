@@ -105,6 +105,11 @@ ALGORITHM_COLORS = {
     "JumpPointSearch": "#d88922",
 }
 
+# -1 oznacza brak odczytu w benchmarku. Wartości powyżej 110°C są traktowane
+# jako błędny odczyt sensora i nie mogą wpływać na średnie ani wykresy.
+MIN_VALID_CPU_TEMPERATURE = 0.0
+MAX_VALID_CPU_TEMPERATURE = 110.0
+
 
 @dataclass
 class BenchmarkRow:
@@ -314,6 +319,13 @@ def finite(values: Iterable[float]) -> list[float]:
     return [value for value in values if value is not None and math.isfinite(value)]
 
 
+def valid_cpu_temperature(value: float) -> bool:
+    return (
+        math.isfinite(value)
+        and MIN_VALID_CPU_TEMPERATURE <= value <= MAX_VALID_CPU_TEMPERATURE
+    )
+
+
 def mean(values: Iterable[float]) -> float:
     vals = finite(values)
     return float(statistics.fmean(vals)) if vals else math.nan
@@ -417,7 +429,7 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
                     f"{percentile(completed_replans, 99):.3f}",
                     f"{mean(path_ratios):.6f}",
                     f"{mean(path_cost_ratios):.6f}",
-                    f"{mean(r.cpu_temp for r in group):.3f}",
+                    f"{mean(r.cpu_temp for r in group if valid_cpu_temperature(r.cpu_temp)):.3f}",
                 ]
             )
 
@@ -503,9 +515,13 @@ def write_summary_tables(rows: list[BenchmarkRow], output_dir: Path, skipped: in
         handle.write(
             f"- Typy map: {', '.join(topology_label(t) for t in TOPOLOGIES if any(r.topology == t for r in rows))}\n"
         )
-        handle.write(
-            f"- Zakres temperatury CPU: {min(r.cpu_temp for r in rows):.1f}–{max(r.cpu_temp for r in rows):.1f} °C\n"
+        valid_temperatures = [r.cpu_temp for r in rows if valid_cpu_temperature(r.cpu_temp)]
+        temperature_range = (
+            f"{min(valid_temperatures):.1f}–{max(valid_temperatures):.1f} °C"
+            if valid_temperatures
+            else "brak poprawnych odczytów"
         )
+        handle.write(f"- Zakres poprawnych odczytów temperatury CPU: {temperature_range}\n")
         handle.write("\nWykresy zapisano w formatach PNG i PDF.\n")
 
 
@@ -793,7 +809,7 @@ def plot_path_found_heatmap(rows: list[BenchmarkRow], output_dir: Path) -> None:
 
 def plot_temperature(rows: list[BenchmarkRow], output_dir: Path) -> None:
     def valid_temperature(row: BenchmarkRow) -> float | None:
-        if not math.isfinite(row.cpu_temp) or row.cpu_temp < 0:
+        if not valid_cpu_temperature(row.cpu_temp):
             return None
         return row.cpu_temp
 

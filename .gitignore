@@ -8,3 +8,5 @@ ProjectSettings/
 # Generated pathfinding benchmark charts and summary tables
 Guided By Flame/Assets/Scripts/Pathfinding/Analysis/outputs/
 Guided By Flame/Assets/Scripts/Pathfinding/Analysis/outputs.meta
+Guided By Flame/Assets/Scripts/Pathfinding/Analysis/outputs_merged_final/
+Guided By Flame/Assets/Scripts/Pathfinding/Analysis/outputs_merged_final.meta
