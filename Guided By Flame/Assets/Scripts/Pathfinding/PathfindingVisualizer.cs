@@ -274,7 +274,7 @@ namespace Pathfinding.Visualization
         private const int FullSuiteCheckpointInterval = 50;
         private const double FullSuiteHeartbeatIntervalSeconds = 30d;
         private const long FullSuiteMaxWorkSliceMs = 5000;
-        private const string AllocationMeasurementVersion = "ThreadAllocatedBytesV1";
+        private const string AllocationMeasurementVersion = "ThreadAllocatedBytesV1-JPSWorkspaceV2";
 
         private class MeasurementBatch
         {

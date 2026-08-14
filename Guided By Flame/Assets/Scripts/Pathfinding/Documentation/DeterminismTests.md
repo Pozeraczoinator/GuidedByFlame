@@ -17,10 +17,10 @@ Aby potwierdzić to naukowo, zbudowano 6-fazowy moduł testujący:
 - **Czego oczekujemy?** Każda próba musi zwrócić dokładnie taką samą wartość zbadanych węzłów (`ExploredNodes`), ułamkową długość trasy (`PathLength`) i tę samą flagę istnienia ścieżki (`PathFound`). To żelazny dowód na eliminację losowości we wszystkich algorytmach.
 
 ### 2. Zestaw 2: Konsystencja Optymalnych (Optimal Consistency)
-- **Co testujemy?** Algorytmy `A*` i `Dijkstra` to klasy tzw. algorytmów optymalnych (gwarantują matematycznie najkrótszą drogę). Testujemy czy na konkretnej mapie oba dojdą do tego samego wniosku.
-- **Jak weryfikujemy?** Badamy kilka mocno zróżnicowanych tras start-meta i w każdym przypadku odpalamy `A*`, `Dijkstra` i `JPS`. Porównujemy zmiennoprzecinkową długość wyznaczonej trasy `PathLength` używając tolerancji `0.01f`.
-- **Czego oczekujemy?** `A*` musi uzyskać długość trasy co do milimetra taką samą jak `Dijkstra` (nawet jeśli oba algorytmy odwiedziły w poszukiwaniu inną liczbę węzłów).
-- **Uwaga naukowa dotycząca JPS:** Algorytm JPS działa na odmiennych zasadach "ścinania rogów" (corner cutting) niż A*. Z tego powodu, z naukowego punktu widzenia, JPS może znajdować odmienne geometrycznie ścieżki i nie musi osiągać takiej samej długości co A*. W teście traktujemy tę różnicę jako `INFO`, by udokumentować odmienne zachowanie JPS.
+- **Co testujemy?** `A*`, `Dijkstra` i `JPS` są algorytmami optymalnymi w zastosowanym modelu: ośmiokierunkowej siatce o jednolitym koszcie terenu, z kosztem ruchu 10/14 i bez ścinania narożników.
+- **Jak weryfikujemy?** Badamy kilka zróżnicowanych tras start-meta. Porównujemy flagę `PathFound` oraz całkowitoliczbowy koszt ścieżki `PathCost` każdego wyniku z Dijkstrą jako algorytmem referencyjnym.
+- **Czego oczekujemy?** Wszystkie trzy algorytmy muszą zwrócić tę samą osiągalność i ten sam optymalny koszt. Sama geometria ścieżki może być inna, jeżeli istnieje kilka tras o identycznym koszcie.
+- **Uwaga dotycząca JPS:** JPS stosuje dokładnie te same reguły ruchu i ścinania narożników co A*. Różny koszt JPS byłby błędem implementacji, dlatego test zgłasza go jako `FAIL`, a nie informację.
 
 ### 3. Zestaw 3: Topologie Map (Topology Determinism)
 - **Co testujemy?** Stabilność algorytmów na radykalnie zróżnicowanych kształtach otoczenia. 

@@ -43,6 +43,15 @@ namespace Pathfinding.Tests
 
         private void Start()
         {
+            RunAllTests();
+        }
+
+        /// <summary>
+        /// Uruchamia pełny zestaw testów. Publiczny punkt wejścia pozwala runnerowi
+        /// batch-mode wykonać testy bez przełączania Unity do Play Mode.
+        /// </summary>
+        public void RunAllTests()
+        {
             Debug.Log("══════════════════════════════════════════════════════════");
             Debug.Log("  TESTY DETERMINIZMU ALGORYTMÓW PATHFINDINGU");
             Debug.Log($"  Powtórzeń per test: {repetitions}");
@@ -96,6 +105,11 @@ namespace Pathfinding.Tests
                 Application.dataPath, "..", "DeterminismTestReport.txt");
             System.IO.File.WriteAllText(reportPath, _report.ToString());
             Debug.Log($"Raport zapisany do: {System.IO.Path.GetFullPath(reportPath)}");
+
+#if UNITY_EDITOR
+            if (Application.isBatchMode)
+                UnityEditor.EditorApplication.Exit(_failed == 0 ? 0 : 1);
+#endif
         }
 
         // ─────────────────────────────────────────────────────────
@@ -206,9 +220,8 @@ namespace Pathfinding.Tests
         // ─────────────────────────────────────────────────────────
 
         /// <summary>
-        /// A* i Dijkstra powinny znajdować ścieżkę o IDENTYCZNEJ długości
-        /// (oba są optymalne). JPS jest raportowany informacyjnie, bo obecna
-        /// implementacja nie pełni roli referencyjnego algorytmu optymalnego.
+        /// A*, Dijkstra i JPS powinny znajdować ścieżkę o IDENTYCZNYM koszcie 10/14
+        /// na nieważonej siatce. Dijkstra pozostaje algorytmem referencyjnym.
         /// </summary>
         private void RunOptimalityConsistencyTests()
         {
@@ -238,10 +251,13 @@ namespace Pathfinding.Tests
                 var resultA = astar.FindPath(map, tc.start, tc.target);
                 var resultD = dijkstra.FindPath(map, tc.start, tc.target);
                 var resultJ = jps.FindPath(map, tc.start, tc.target);
+                resultA.CalculatePathCost(tc.start);
+                resultD.CalculatePathCost(tc.start);
+                resultJ.CalculatePathCost(tc.start);
 
                 string testNameBase = $"OptimalConsistency_{tc.start}→{tc.target}";
 
-                // A* vs Dijkstra — MUSZĄ mieć identyczną PathLength (oba optymalne)
+                // A* vs Dijkstra — MUSZĄ mieć identyczny koszt 10/14 (oba optymalne)
                 if (resultA.PathFound != resultD.PathFound)
                 {
                     RecordResult($"{testNameBase}_AStarVsDijkstra", false,
@@ -255,29 +271,25 @@ namespace Pathfinding.Tests
                 }
                 else
                 {
-                    float tolerance = 0.01f;
-                    bool lengthMatch = Math.Abs(resultA.PathLength - resultD.PathLength) < tolerance;
-                    string info = $"A*={resultA.PathLength:F4}, Dijkstra={resultD.PathLength:F4}";
-                    RecordResult($"{testNameBase}_AStarVsDijkstra", lengthMatch,
-                        lengthMatch ? "" : $"A*={resultA.PathLength:F4} ≠ Dijkstra={resultD.PathLength:F4}",
+                    bool costMatch = resultA.PathCost == resultD.PathCost;
+                    string info = $"A*={resultA.PathCost}, Dijkstra={resultD.PathCost}";
+                    RecordResult($"{testNameBase}_AStarVsDijkstra", costMatch,
+                        costMatch ? "" : $"A*={resultA.PathCost} ≠ Dijkstra={resultD.PathCost}",
                         info);
                 }
 
-                // JPS vs A* — obecna implementacja JPS nie jest referencją optymalności.
-                // Różnice długości dokumentujemy informacyjnie, ale test determinizmu nie powinien
-                // failować, jeśli JPS jest powtarzalny i znajduje poprawną ścieżkę.
+                // JPS jest optymalną redukcją A* dla używanej tutaj nieważonej siatki.
                 if (resultA.PathFound && resultJ.PathFound)
                 {
-                    float tolerance = 0.01f;
-                    bool jpsMatch = Math.Abs(resultA.PathLength - resultJ.PathLength) < tolerance;
-                    string info = $"A*={resultA.PathLength:F4}, JPS={resultJ.PathLength:F4}";
-                    RecordResult($"{testNameBase}_JPSvsAStar", true, "",
-                        jpsMatch ? info : $"[INFO] Różnica PathLength JPS względem A*: {info}");
+                    bool jpsMatch = resultA.PathCost == resultJ.PathCost;
+                    string info = $"A*={resultA.PathCost}, JPS={resultJ.PathCost}";
+                    RecordResult($"{testNameBase}_JPSvsAStar", jpsMatch,
+                        jpsMatch ? "" : $"Różnica PathCost10_14 JPS względem A*: {info}", info);
                 }
                 else if (resultA.PathFound != resultJ.PathFound)
                 {
-                    RecordResult($"{testNameBase}_JPSvsAStar", true, "",
-                        $"[INFO] Różnica PathFound: A*={resultA.PathFound}, JPS={resultJ.PathFound}");
+                    RecordResult($"{testNameBase}_JPSvsAStar", false,
+                        $"Różnica PathFound: A*={resultA.PathFound}, JPS={resultJ.PathFound}", "");
                 }
                 else
                 {

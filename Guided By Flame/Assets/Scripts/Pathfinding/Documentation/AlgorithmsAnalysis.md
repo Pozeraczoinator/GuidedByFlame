@@ -380,6 +380,8 @@ Implementacja składa się z trzech głównych elementów:
 2. **Jump** — rekurencyjnie idzie w wybranym kierunku, dopóki nie znajdzie jump pointa, celu albo przeszkody.
 3. **RetracePath** — odtwarza pełną ścieżkę, interpolując pola między jump pointami.
 
+Struktury robocze nie są tworzone od nowa przy każdym wywołaniu. Implementacja ponownie używa tablicy węzłów, kopca, stałego bufora sąsiadów i listy jump pointów. Znacznik generacji wyszukiwania resetuje logiczny stan węzła dopiero przy jego pierwszym użyciu w danym przebiegu. Zmniejsza to koszt alokacji i pracy GC bez zmiany reguł JPS ani wyznaczanej ścieżki.
+
 ### Dlaczego JPS może być szybki
 
 Na otwartej mapie wiele pól jest symetrycznych: przejście przez pole `(x, y)` nie daje żadnej nowej informacji, jeśli i tak idziemy po prostej lub przekątnej. JPS pomija takie pola podczas wyszukiwania. Dzięki temu `ExploredNodes` może być dużo mniejsze niż w A\*.

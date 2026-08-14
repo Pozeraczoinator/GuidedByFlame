@@ -1,44 +1,43 @@
 RAPORT TESTÓW DETERMINIZMU
-Data: 2026-05-19 12:28:39
+Data: 2026-08-14 11:16:06
 Powtórzeń per test: 100
 ────────────────────────────────────────────────────────────
 
 ── ZESTAW 1: POWTARZALNOŚĆ ──
 ✅ PASS: Repeatability_AStar — PathFound=True, Nodes=176, Length=36,55, Steps=32
 ✅ PASS: Repeatability_Dijkstra — PathFound=True, Nodes=471, Length=36,55, Steps=32
-✅ PASS: Repeatability_GreedyBestFirst — PathFound=True, Nodes=41, Length=40,31, Steps=37
+✅ PASS: Repeatability_GreedyBestFirst — PathFound=True, Nodes=39, Length=39,38, Steps=34
 ✅ PASS: Repeatability_CustomGreedy — PathFound=True, Nodes=39, Length=39,38, Steps=34
-✅ PASS: Repeatability_JumpPointSearch — PathFound=True, Nodes=305, Length=42,41, Steps=42
+✅ PASS: Repeatability_JumpPointSearch — PathFound=True, Nodes=75, Length=36,55, Steps=32
 
 ── ZESTAW 2: KONSYSTENCJA OPTYMALNYCH ──
-✅ PASS: OptimalConsistency_(1, 1)→(28, 17)_AStarVsDijkstra — A*=36,5540, Dijkstra=36,5540
-✅ PASS: OptimalConsistency_(1, 1)→(28, 17)_JPSvsAStar — [INFO] Różnica PathLength (Corner Cutting): A*=36,5540, JPS=42,4140
-✅ PASS: OptimalConsistency_(1, 18)→(30, 1)_AStarVsDijkstra — A*=40,7260, Dijkstra=40,7260
-✅ PASS: OptimalConsistency_(1, 18)→(30, 1)_JPSvsAStar — [INFO] Różnica PathLength (Corner Cutting): A*=40,7260, JPS=46,0000
-✅ PASS: OptimalConsistency_(15, 10)→(3, 3)_AStarVsDijkstra — A*=16,6560, Dijkstra=16,6560
-✅ PASS: OptimalConsistency_(15, 10)→(3, 3)_JPSvsAStar — [INFO] Różnica PathLength (Corner Cutting): A*=16,6560, JPS=19,0000
+✅ PASS: OptimalConsistency_(1, 1)→(28, 17)_AStarVsDijkstra — A*=364, Dijkstra=364
+✅ PASS: OptimalConsistency_(1, 1)→(28, 17)_JPSvsAStar — A*=364, JPS=364
+✅ PASS: OptimalConsistency_(1, 18)→(30, 1)_AStarVsDijkstra — A*=406, Dijkstra=406
+✅ PASS: OptimalConsistency_(1, 18)→(30, 1)_JPSvsAStar — A*=406, JPS=406
+✅ PASS: OptimalConsistency_(15, 10)→(3, 3)_AStarVsDijkstra — A*=166, Dijkstra=166
+✅ PASS: OptimalConsistency_(15, 10)→(3, 3)_JPSvsAStar — A*=166, JPS=166
 
 ── ZESTAW 3: TOPOLOGIE MAP ──
 ✅ PASS: Topology_Maze_AStar — PathFound=True, Nodes=138
 ✅ PASS: Topology_Maze_Dijkstra — PathFound=True, Nodes=427
 ✅ PASS: Topology_Maze_GreedyBestFirst — PathFound=True, Nodes=40
 ✅ PASS: Topology_Maze_CustomGreedy — PathFound=True, Nodes=40
-✅ PASS: Topology_Maze_JumpPointSearch — PathFound=True, Nodes=353
+✅ PASS: Topology_Maze_JumpPointSearch — PathFound=True, Nodes=60
 ✅ PASS: Topology_RoomCorridor_AStar — PathFound=True, Nodes=177
 ✅ PASS: Topology_RoomCorridor_Dijkstra — PathFound=True, Nodes=283
-✅ PASS: Topology_RoomCorridor_GreedyBestFirst — PathFound=True, Nodes=48
+✅ PASS: Topology_RoomCorridor_GreedyBestFirst — PathFound=True, Nodes=116
 ✅ PASS: Topology_RoomCorridor_CustomGreedy — PathFound=True, Nodes=116
-✅ PASS: Topology_RoomCorridor_JumpPointSearch — PathFound=True, Nodes=156
+✅ PASS: Topology_RoomCorridor_JumpPointSearch — PathFound=True, Nodes=10
 ✅ PASS: Topology_ScatteredBlock_AStar — PathFound=True, Nodes=79
 ✅ PASS: Topology_ScatteredBlock_Dijkstra — PathFound=True, Nodes=508
-✅ PASS: Topology_ScatteredBlock_GreedyBestFirst — PathFound=True, Nodes=39
+✅ PASS: Topology_ScatteredBlock_GreedyBestFirst — PathFound=True, Nodes=35
 ✅ PASS: Topology_ScatteredBlock_CustomGreedy — PathFound=True, Nodes=35
-✅ PASS: Topology_ScatteredBlock_JumpPointSearch — PathFound=True, Nodes=355
+✅ PASS: Topology_ScatteredBlock_JumpPointSearch — PathFound=True, Nodes=24
 
-── ZESTAW 4: WAGI TERENU (DS3) ──
+── ZESTAW 4: WAGI TERENU ──
 ✅ PASS: WeightedTerrain_AStar — PathFound=True, Nodes=126, Length=37,1400
 ✅ PASS: WeightedTerrain_Dijkstra — PathFound=True, Nodes=437, Length=37,1400
-✅ PASS: WeightedTerrain_GreedyBestFirst — PathFound=True, Nodes=41, Length=40,3120
 ✅ PASS: WeightedTerrain_CustomGreedy — PathFound=True, Nodes=39, Length=39,3820
 
 ── ZESTAW 5: EDGE CASES ──
@@ -65,42 +64,73 @@ Powtórzeń per test: 100
 ✅ PASS: EdgeCase_StartEqualsTarget_JumpPointSearch — PathFound=True, Length=0,0000
 ✅ PASS: EdgeCase_Adjacent_JumpPointSearch — PathFound=True, Steps=1, Length=1,00
 ✅ PASS: EdgeCase_CorridorTurn_JumpPointSearch — PathFound=True, Path=[(2,1) -> (3,1) -> (3,2) -> (3,3)]
-✅ PASS: EdgeCase_NoPath_JumpPointSearch — PathFound=False, ExploredNodes=631
+✅ PASS: EdgeCase_NoPath_JumpPointSearch — PathFound=False, ExploredNodes=5
 ✅ PASS: EdgeCase_NoCornerCutting_JumpPointSearch — PathFound=False
 
 ── ZESTAW 6: GEOMETRIA ŚCIEŻKI ──
+✅ PASS: PathCost10_14_KnownRoute — Ruchy: prosty (10) + diagonalny (14) + prosty (10)
 ✅ PASS: PathGeometry_Simple_AStar — Steps=32, Length=36,55
 ✅ PASS: PathGeometry_Simple_Dijkstra — Steps=32, Length=36,55
-✅ PASS: PathGeometry_Simple_GreedyBestFirst — Steps=37, Length=40,31
+✅ PASS: PathGeometry_Simple_GreedyBestFirst — Steps=34, Length=39,38
 ✅ PASS: PathGeometry_Simple_CustomGreedy — Steps=34, Length=39,38
-✅ PASS: PathGeometry_Simple_JumpPointSearch — Steps=42, Length=42,41
-✅ PASS: PathGeometry_DS2Snapshot_AStar — Steps=10, Length=13,31
-✅ PASS: PathGeometry_DS2Snapshot_Dijkstra — Steps=10, Length=13,31
-✅ PASS: PathGeometry_DS2Snapshot_GreedyBestFirst — Steps=10, Length=13,31
-✅ PASS: PathGeometry_DS2Snapshot_CustomGreedy — Steps=10, Length=13,31
-✅ PASS: PathGeometry_DS2Snapshot_JumpPointSearch — Steps=15, Length=16,24
+✅ PASS: PathGeometry_Simple_JumpPointSearch — Steps=32, Length=36,55
+✅ PASS: PathGeometry_DS1Snapshot_AStar — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS1Snapshot_Dijkstra — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS1Snapshot_GreedyBestFirst — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS1Snapshot_CustomGreedy — Steps=10, Length=13,31
+✅ PASS: PathGeometry_DS1Snapshot_JumpPointSearch — Steps=10, Length=13,31
 ✅ PASS: PathGeometry_CornerBlocked_AStar — No path
 ✅ PASS: PathGeometry_CornerBlocked_Dijkstra — No path
 ✅ PASS: PathGeometry_CornerBlocked_GreedyBestFirst — No path
 ✅ PASS: PathGeometry_CornerBlocked_CustomGreedy — No path
 ✅ PASS: PathGeometry_CornerBlocked_JumpPointSearch — No path
-✅ PASS: DS2_Snapshot_Determinism — Seed=123
+✅ PASS: DS1_Snapshot_Determinism — Seed=123
 
-── ZESTAW 6: PEŁNA ŚCIEŻKA ──
+── ZESTAW 7: PEŁNA ŚCIEŻKA ──
 ✅ PASS: FullPath_Simple_AStar — Steps=34, Runs=100
 ✅ PASS: FullPath_Simple_Dijkstra — Steps=34, Runs=100
-✅ PASS: FullPath_Simple_GreedyBestFirst — Steps=39, Runs=100
+✅ PASS: FullPath_Simple_GreedyBestFirst — Steps=36, Runs=100
 ✅ PASS: FullPath_Simple_CustomGreedy — Steps=36, Runs=100
-✅ PASS: FullPath_Simple_JumpPointSearch — Steps=45, Runs=100
+✅ PASS: FullPath_Simple_JumpPointSearch — Steps=34, Runs=100
 ✅ PASS: FullPath_Maze_AStar — Steps=33, Runs=100
 ✅ PASS: FullPath_Maze_Dijkstra — Steps=33, Runs=100
-✅ PASS: FullPath_Maze_GreedyBestFirst — Steps=43, Runs=100
+✅ PASS: FullPath_Maze_GreedyBestFirst — Steps=45, Runs=100
 ✅ PASS: FullPath_Maze_CustomGreedy — Steps=45, Runs=100
-✅ PASS: FullPath_Maze_JumpPointSearch — Steps=44, Runs=100
+✅ PASS: FullPath_Maze_JumpPointSearch — Steps=33, Runs=100
 ✅ PASS: FullPath_Rooms_AStar — Steps=36, Runs=100
 ✅ PASS: FullPath_Rooms_Dijkstra — Steps=36, Runs=100
 ✅ PASS: FullPath_Rooms_GreedyBestFirst — Steps=39, Runs=100
 ✅ PASS: FullPath_Rooms_CustomGreedy — Steps=39, Runs=100
-✅ PASS: FullPath_Rooms_JumpPointSearch — Steps=40, Runs=100
+✅ PASS: FullPath_Rooms_JumpPointSearch — Steps=36, Runs=100
+
+── ZESTAW 8: DETERMINIZM DS1 I DS2 ──
+✅ PASS: DS1_MovingObstacles_Repeat_AStar — PathFound=True, Replans=1, Steps=33, Runs=20, StableMapSeed=42
+✅ PASS: DS1_MovingObstacles_Repeat_Dijkstra — PathFound=True, Replans=1, Steps=33, Runs=20, StableMapSeed=42
+✅ PASS: DS1_MovingObstacles_Repeat_GreedyBestFirst — PathFound=True, Replans=1, Steps=35, Runs=20, StableMapSeed=42
+✅ PASS: DS1_MovingObstacles_Repeat_CustomGreedy — PathFound=True, Replans=1, Steps=35, Runs=20, StableMapSeed=42
+✅ PASS: DS1_MovingObstacles_Repeat_JumpPointSearch — PathFound=True, Replans=1, Steps=33, Runs=20, StableMapSeed=42
+✅ PASS: DS2_PathObstruction_Repeat_AStar — PathFound=True, Replans=1, Steps=33, Runs=20, StableMapSeed=42
+✅ PASS: DS2_PathObstruction_Repeat_Dijkstra — PathFound=True, Replans=3, Steps=36, Runs=20, StableMapSeed=42
+✅ PASS: DS2_PathObstruction_Repeat_GreedyBestFirst — PathFound=True, Replans=0, Steps=34, Runs=20, StableMapSeed=42
+✅ PASS: DS2_PathObstruction_Repeat_CustomGreedy — PathFound=True, Replans=0, Steps=34, Runs=20, StableMapSeed=42
+✅ PASS: DS2_PathObstruction_Repeat_JumpPointSearch — PathFound=True, Replans=1, Steps=33, Runs=20, StableMapSeed=42
+
+── ZESTAW 9: DS3 ESCAPING TARGET ──
+✅ PASS: DS3_EscapingTarget_Rules_AStar — Escapes=8, ReachedTarget=True
+✅ PASS: DS3_EscapingTarget_Repeat_AStar — Escapes=8, Runs=50, Seed=42
+✅ PASS: DS3_Production_Repeat_AStar — PathFound=True, Replans=5
+✅ PASS: DS3_EscapingTarget_Rules_Dijkstra — Escapes=8, ReachedTarget=True
+✅ PASS: DS3_EscapingTarget_Repeat_Dijkstra — Escapes=8, Runs=50, Seed=42
+✅ PASS: DS3_Production_Repeat_Dijkstra — PathFound=True, Replans=5
+✅ PASS: DS3_EscapingTarget_Rules_GreedyBestFirst — Escapes=8, ReachedTarget=True
+✅ PASS: DS3_EscapingTarget_Repeat_GreedyBestFirst — Escapes=8, Runs=50, Seed=42
+✅ PASS: DS3_Production_Repeat_GreedyBestFirst — PathFound=True, Replans=5
+✅ PASS: DS3_EscapingTarget_Rules_CustomGreedy — Escapes=8, ReachedTarget=True
+✅ PASS: DS3_EscapingTarget_Repeat_CustomGreedy — Escapes=8, Runs=50, Seed=42
+✅ PASS: DS3_Production_Repeat_CustomGreedy — PathFound=True, Replans=5
+✅ PASS: DS3_EscapingTarget_Rules_JumpPointSearch — Escapes=8, ReachedTarget=True
+✅ PASS: DS3_EscapingTarget_Repeat_JumpPointSearch — Escapes=8, Runs=50, Seed=42
+✅ PASS: DS3_Production_Repeat_JumpPointSearch — PathFound=True, Replans=5
+✅ PASS: DS3_CommonTargetSchedule_AllAlgorithms — Wspólny prefiks trajektorii celu dla wszystkich algorytmów.
 ════════════════════════════════════════════════════════════
-WYNIKI: 86 PASSED / 0 FAILED
+WYNIKI: 112 PASSED / 0 FAILED

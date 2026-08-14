@@ -131,13 +131,13 @@ W scenariuszu statycznym zakres pomiaru obejmuje zasadniczo jedno wyszukiwanie. 
 
 ## 7. Ponowne używanie struktur
 
-A*, Dijkstra, Greedy Best-First Search i Custom Greedy ponownie wykorzystują:
+A*, Dijkstra, Greedy Best-First Search, Custom Greedy i JPS ponownie wykorzystują:
 
 - tablicę węzłów `Node[,]`;
 - kopiec `MinHeap`;
 - znaczniki generacji wyszukiwania zamiast czyszczenia całych słowników i zbiorów.
 
-Bufory są ponownie używane pomiędzy iteracjami i replanami tej samej instancji algorytmu. Zmniejsza to liczbę alokacji i pracę GC. JPS pozostał przy własnej strukturze wyszukiwania, ponieważ jego organizacja skoków różni się od pozostałych implementacji.
+Bufory są ponownie używane pomiędzy iteracjami i replanami tej samej instancji algorytmu. Zmniejsza to liczbę alokacji i pracę GC. JPS zachowuje własną logikę skoków, ale ponownie używa tablicy węzłów, kopca, bufora sąsiadów i bufora jump pointów. Stan wyszukiwania jest izolowany znacznikiem generacji, więc ponowne użycie instancji nie przenosi wyniku między wywołaniami.
 
 Ta zmiana wpływa zarówno na czas warm start, jak i `AvgGCAllocBytes`, dlatego wymaga nowego eksperymentu zamiast kontynuacji wcześniejszego CSV.
 

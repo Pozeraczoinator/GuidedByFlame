@@ -1,6 +1,6 @@
 # Analiza benchmarku wyszukiwania ścieżek
 
-Skrypt `analyze_benchmark.py` analizuje plik `benchmark_results_official.csv` i generuje wykresy oraz tabele przeznaczone do dalszej analizy i wykorzystania w pracy magisterskiej.
+Skrypt `analyze_benchmark.py` domyślnie analizuje plik `benchmark_results_new_final_jj.csv` i generuje wykresy oraz tabele przeznaczone do dalszej analizy i wykorzystania w pracy magisterskiej.
 
 ## Uruchomienie
 
@@ -58,11 +58,33 @@ Pozostałe wykresy zachowują swój dotychczasowy charakter:
 - `13_scaling_topology_*`: cztery liniowe wykresy skalowania rozdzielone według typu mapy,
 - `14_density_topology_*`: cztery liniowe wykresy wpływu gęstości przeszkód.
 
-Wykresy alokacji wykorzystują kolumnę `AvgGCAllocBytes`. Pokazują średnią liczbę bajtów pamięci zarządzanej alokowanych podczas wykonania algorytmu; nie jest to całkowite ani szczytowe użycie pamięci RAM przez proces Unity.
+Wykresy alokacji wykorzystują kolumnę `AvgGCAllocBytes`. Pokazują średnią liczbę bajtów pamięci zarządzanej alokowanych podczas wykonania algorytmu; nie jest to całkowite ani szczytowe użycie pamięci RAM przez proces Unity. Jeżeli plik nie zawiera żadnej dodatniej wartości tej metryki, wykresy pamięci są pomijane zamiast prezentować mylące słupki o wartości zero.
 
-Wykresy kosztu wykorzystują `PathLength` wyłącznie dla rekordów z `PathFound=True`. Nadmiarowy koszt jest liczony jako `(PathLength / ReferenceShortestPathLength - 1) × 100%`. Dla DS1 i DS2 jest to porównanie z początkową trasą referencyjną. DS3 jest wyłączony z wykresów ilorazu jakości i nadmiarowego kosztu, ponieważ statyczna trasa do pierwotnej pozycji celu nie jest poprawną referencją dla celu uciekającego.
+Wykresy jakości i nadmiarowego kosztu wykorzystują `PathCost10_14` wyłącznie dla rekordów z `PathFound=True`. Referencją jest koszt statycznej Dijkstry dla tej samej mapy i pary start-cel. Nadmiarowy koszt jest liczony jako `(PathCost10_14 / ReferencePathCost10_14 - 1) × 100%`. Dla DS1 i DS2 oznacza to porównanie z optymalną trasą na mapie początkowej. DS3 jest wyłączony z tych wykresów, ponieważ statyczna trasa do pierwotnej pozycji celu nie jest poprawną referencją dla celu uciekającego.
 
 Każdy wykres jest zapisywany jako PNG do szybkiego podglądu oraz jako wektorowy PDF do umieszczenia w pracy. Wszystkie wykresy słupkowe mają wspólny układ: scenariusze w osobnych panelach, algorytmy oznaczone stałymi kolorami i topologie map na osi X. Rozmiar lub gęstość mapy są wskazane w tytule.
+
+## Ponowny pomiar tylko JPS
+
+Po zmianie implementacji JPS nie trzeba ponownie uruchamiać pozostałych algorytmów. W komponencie `PathfindingVisualizer` należy ustawić:
+
+- `Benchmark Mode`: `SingleAlgorithm`,
+- `Selected Algorithm`: `JumpPointSearch`,
+- `Run Full Benchmark Suite`: włączone,
+- `Benchmark Iterations`: `5`,
+- `Pairs Per Bucket`: `35`,
+- osobną nazwę pliku, np. `benchmark_results_jps_optimized.csv`.
+
+Po ukończeniu pełnej serii nowe wiersze JPS można bezpiecznie połączyć z dotychczasowym plikiem:
+
+```powershell
+python "Guided By Flame/Assets/Scripts/Pathfinding/Analysis/merge_jps_results.py" `
+  --base "Guided By Flame/benchmark_results_new_final_jj.csv" `
+  --jps "Guided By Flame/benchmark_results_jps_optimized.csv" `
+  --output "Guided By Flame/benchmark_results_merged_final.csv"
+```
+
+Skrypt nie nadpisuje plików wejściowych. Wymaga kompletnego zestawu `TestID`, identycznych map i par start-cel oraz identycznych logicznych metryk JPS zapisanych w CSV (`PathFound`, liczba zbadanych pól, koszt, długość, zmiany kierunku, gładkość i liczba replanów). Jeżeli optymalizacja zmieni zachowanie algorytmu albo konfiguracja testu będzie inna, scalanie zostanie przerwane. Pełną sekwencję pól ścieżki kontroluje osobny zestaw testów determinizmu, ponieważ CSV jej nie przechowuje.
 
 ## Tabele i raport
 
